@@ -33,10 +33,23 @@ static size_t ParseSize(String^ s) {
     return (size_t)(v * (double)mult);
 }
 
+/* C++/CLI 托管类里不能捕获托管句柄，也不能有静态局部托管变量。
+ * 用 gcroot 持有 ListBox^，供 game_list 的静态原生回调使用。 */
+static msclr::gcroot<ListBox^> g_gamesList;
+
+static int __cdecl GameListCallback(const game_entry_t *g, void *ud) {
+    (void)ud;
+    ListBox^ lb = g_gamesList;
+    if (lb != nullptr && g != nullptr) {
+        lb->Items->Add(gcnew String(g->name) + L"  ->  " + gcnew String(g->path));
+    }
+    return 0;
+}
+
 MainForm::MainForm()
 {
     this->Text = gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING);
-    this->ClientSize = System::Drawing::Size(760, 720);
+    this->ClientSize = Drawing::Size(760, 720);
     this->StartPosition = FormStartPosition::CenterScreen;
 
     log_init("patcher.log");
@@ -48,15 +61,15 @@ MainForm::MainForm()
     // ============ 游戏管理 ============
     GroupBox^ gbGame = gcnew GroupBox();
     gbGame->Text = L"游戏管理 (别名登记表)";
-    gbGame->Location = System::Drawing::Point(12, y);
-    gbGame->Size = System::Drawing::Size(736, 100);
-    txtAlias = gcnew TextBox();       txtAlias->Location = Point(12, 22);   txtAlias->Size = Size(110, 23);  txtAlias->PlaceholderText = L"别名";
-    txtGamePath = gcnew TextBox();    txtGamePath->Location = Point(130, 22); txtGamePath->Size = Size(360, 23); txtGamePath->PlaceholderText = L"游戏 .rpa 路径";
-    btnBrowseGame = gcnew Button();   btnBrowseGame->Location = Point(495, 20); btnBrowseGame->Size = Size(60, 25); btnBrowseGame->Text = L"浏览";
-    btnAddGame = gcnew Button();      btnAddGame->Location = Point(560, 20); btnAddGame->Size = Size(80, 25); btnAddGame->Text = L"添加";
-    btnRemoveGame = gcnew Button();   btnRemoveGame->Location = Point(645, 20); btnRemoveGame->Size = Size(80, 25); btnRemoveGame->Text = L"删除";
-    lstGames = gcnew ListBox();       lstGames->Location = Point(12, 52); lstGames->Size = Size(610, 42);
-    btnRefreshGames = gcnew Button(); btnRefreshGames->Location = Point(630, 52); btnRefreshGames->Size = Size(95, 38); btnRefreshGames->Text = L"刷新列表";
+    gbGame->Location = Drawing::Point(12, y);
+    gbGame->Size = Drawing::Size(736, 100);
+    txtAlias = gcnew TextBox();       txtAlias->Location = Drawing::Point(12, 22);   txtAlias->Size = Drawing::Size(110, 23);
+    txtGamePath = gcnew TextBox();    txtGamePath->Location = Drawing::Point(130, 22); txtGamePath->Size = Drawing::Size(360, 23);
+    btnBrowseGame = gcnew Button();   btnBrowseGame->Location = Drawing::Point(495, 20); btnBrowseGame->Size = Drawing::Size(60, 25); btnBrowseGame->Text = L"浏览";
+    btnAddGame = gcnew Button();      btnAddGame->Location = Drawing::Point(560, 20); btnAddGame->Size = Drawing::Size(80, 25); btnAddGame->Text = L"添加";
+    btnRemoveGame = gcnew Button();   btnRemoveGame->Location = Drawing::Point(645, 20); btnRemoveGame->Size = Drawing::Size(80, 25); btnRemoveGame->Text = L"删除";
+    lstGames = gcnew ListBox();       lstGames->Location = Drawing::Point(12, 52); lstGames->Size = Drawing::Size(610, 42);
+    btnRefreshGames = gcnew Button(); btnRefreshGames->Location = Drawing::Point(630, 52); btnRefreshGames->Size = Drawing::Size(95, 38); btnRefreshGames->Text = L"刷新列表";
     gbGame->Controls->AddRange(gcnew array<Control^>{ txtAlias, txtGamePath, btnBrowseGame, btnAddGame, btnRemoveGame, lstGames, btnRefreshGames });
     this->Controls->Add(gbGame);
 
@@ -70,12 +83,12 @@ MainForm::MainForm()
     // ============ 解包 ============
     GroupBox^ gbU = gcnew GroupBox();
     gbU->Text = L"解包 (Unpack)";
-    gbU->Location = Point(12, y); gbU->Size = Size(736, 64);
-    txtUnpackIn = gcnew TextBox();    txtUnpackIn->Location = Point(12, 22); txtUnpackIn->Size = Size(300, 23); txtUnpackIn->PlaceholderText = L"输入 .rpa (或别名)";
-    btnBrowseUnpackIn = gcnew Button(); btnBrowseUnpackIn->Location = Point(317, 20); btnBrowseUnpackIn->Size = Size(60, 25); btnBrowseUnpackIn->Text = L"浏览";
-    txtUnpackOut = gcnew TextBox();   txtUnpackOut->Location = Point(382, 22); txtUnpackOut->Size = Size(220, 23); txtUnpackOut->PlaceholderText = L"输出目录";
-    btnBrowseUnpackOut = gcnew Button(); btnBrowseUnpackOut->Location = Point(607, 20); btnBrowseUnpackOut->Size = Size(60, 25); btnBrowseUnpackOut->Text = L"目录";
-    btnUnpack = gcnew Button();       btnUnpack->Location = Point(670, 20); btnUnpack->Size = Size(58, 25); btnUnpack->Text = L"执行";
+    gbU->Location = Drawing::Point(12, y); gbU->Size = Drawing::Size(736, 64);
+    txtUnpackIn = gcnew TextBox();    txtUnpackIn->Location = Drawing::Point(12, 22); txtUnpackIn->Size = Drawing::Size(300, 23);
+    btnBrowseUnpackIn = gcnew Button(); btnBrowseUnpackIn->Location = Drawing::Point(317, 20); btnBrowseUnpackIn->Size = Drawing::Size(60, 25); btnBrowseUnpackIn->Text = L"浏览";
+    txtUnpackOut = gcnew TextBox();   txtUnpackOut->Location = Drawing::Point(382, 22); txtUnpackOut->Size = Drawing::Size(220, 23);
+    btnBrowseUnpackOut = gcnew Button(); btnBrowseUnpackOut->Location = Drawing::Point(607, 20); btnBrowseUnpackOut->Size = Drawing::Size(60, 25); btnBrowseUnpackOut->Text = L"目录";
+    btnUnpack = gcnew Button();       btnUnpack->Location = Drawing::Point(670, 20); btnUnpack->Size = Drawing::Size(58, 25); btnUnpack->Text = L"执行";
     gbU->Controls->AddRange(gcnew array<Control^>{ txtUnpackIn, btnBrowseUnpackIn, txtUnpackOut, btnBrowseUnpackOut, btnUnpack });
     this->Controls->Add(gbU);
     btnBrowseUnpackIn->Click += gcnew EventHandler(this, &MainForm::btnBrowseUnpackIn_Click);
@@ -87,14 +100,14 @@ MainForm::MainForm()
     // ============ 注入（build） ============
     GroupBox^ gbB = gcnew GroupBox();
     gbB->Text = L"注入 (Build：解包→合并mod→重打包，自动写来源声明)";
-    gbB->Location = Point(12, y); gbB->Size = Size(736, 90);
-    txtBuildIn = gcnew TextBox();    txtBuildIn->Location = Point(12, 20); txtBuildIn->Size = Size(300, 23); txtBuildIn->PlaceholderText = L"游戏 .rpa (或别名)";
-    btnBrowseBuildIn = gcnew Button(); btnBrowseBuildIn->Location = Point(317, 18); btnBrowseBuildIn->Size = Size(60, 25); btnBrowseBuildIn->Text = L"浏览";
-    txtModDir = gcnew TextBox();     txtModDir->Location = Point(382, 20); txtModDir->Size = Size(180, 23); txtModDir->PlaceholderText = L"mod 目录";
-    btnBrowseMod = gcnew Button();   btnBrowseMod->Location = Point(567, 18); btnBrowseMod->Size = Size(60, 25); btnBrowseMod->Text = L"目录";
-    txtBuildOut = gcnew TextBox();   txtBuildOut->Location = Point(12, 50); txtBuildOut->Size = Size(300, 23); txtBuildOut->PlaceholderText = L"输出 .rpa";
-    btnBrowseBuildOut = gcnew Button(); btnBrowseBuildOut->Location = Point(317, 48); btnBrowseBuildOut->Size = Size(60, 25); btnBrowseBuildOut->Text = L"浏览";
-    btnBuild = gcnew Button();       btnBuild->Location = Point(382, 48); btnBuild->Size = Size(120, 25); btnBuild->Text = L"执行注入";
+    gbB->Location = Drawing::Point(12, y); gbB->Size = Drawing::Size(736, 90);
+    txtBuildIn = gcnew TextBox();    txtBuildIn->Location = Drawing::Point(12, 20); txtBuildIn->Size = Drawing::Size(300, 23);
+    btnBrowseBuildIn = gcnew Button(); btnBrowseBuildIn->Location = Drawing::Point(317, 18); btnBrowseBuildIn->Size = Drawing::Size(60, 25); btnBrowseBuildIn->Text = L"浏览";
+    txtModDir = gcnew TextBox();     txtModDir->Location = Drawing::Point(382, 20); txtModDir->Size = Drawing::Size(180, 23);
+    btnBrowseMod = gcnew Button();   btnBrowseMod->Location = Drawing::Point(567, 18); btnBrowseMod->Size = Drawing::Size(60, 25); btnBrowseMod->Text = L"目录";
+    txtBuildOut = gcnew TextBox();   txtBuildOut->Location = Drawing::Point(12, 50); txtBuildOut->Size = Drawing::Size(300, 23);
+    btnBrowseBuildOut = gcnew Button(); btnBrowseBuildOut->Location = Drawing::Point(317, 48); btnBrowseBuildOut->Size = Drawing::Size(60, 25); btnBrowseBuildOut->Text = L"浏览";
+    btnBuild = gcnew Button();       btnBuild->Location = Drawing::Point(382, 48); btnBuild->Size = Drawing::Size(120, 25); btnBuild->Text = L"执行注入";
     gbB->Controls->AddRange(gcnew array<Control^>{ txtBuildIn, btnBrowseBuildIn, txtModDir, btnBrowseMod, txtBuildOut, btnBrowseBuildOut, btnBuild });
     this->Controls->Add(gbB);
     btnBrowseBuildIn->Click += gcnew EventHandler(this, &MainForm::btnBrowseBuildIn_Click);
@@ -107,12 +120,12 @@ MainForm::MainForm()
     // ============ 来源声明 ============
     GroupBox^ gbC = gcnew GroupBox();
     gbC->Text = L"来源声明 (Credit：给已有包标注开源项目注入/汉化)";
-    gbC->Location = Point(12, y); gbC->Size = Size(736, 64);
-    txtCreditIn = gcnew TextBox();   txtCreditIn->Location = Point(12, 22); txtCreditIn->Size = Size(300, 23); txtCreditIn->PlaceholderText = L"输入 .rpa (或别名)";
-    btnBrowseCreditIn = gcnew Button(); btnBrowseCreditIn->Location = Point(317, 20); btnBrowseCreditIn->Size = Size(60, 25); btnBrowseCreditIn->Text = L"浏览";
-    txtCreditOut = gcnew TextBox();  txtCreditOut->Location = Point(382, 22); txtCreditOut->Size = Size(220, 23); txtCreditOut->PlaceholderText = L"输出 .rpa";
-    btnBrowseCreditOut = gcnew Button(); btnBrowseCreditOut->Location = Point(607, 20); btnBrowseCreditOut->Size = Size(60, 25); btnBrowseCreditOut->Text = L"浏览";
-    btnCredit = gcnew Button();      btnCredit->Location = Point(670, 20); btnCredit->Size = Size(58, 25); btnCredit->Text = L"执行";
+    gbC->Location = Drawing::Point(12, y); gbC->Size = Drawing::Size(736, 64);
+    txtCreditIn = gcnew TextBox();   txtCreditIn->Location = Drawing::Point(12, 22); txtCreditIn->Size = Drawing::Size(300, 23);
+    btnBrowseCreditIn = gcnew Button(); btnBrowseCreditIn->Location = Drawing::Point(317, 20); btnBrowseCreditIn->Size = Drawing::Size(60, 25); btnBrowseCreditIn->Text = L"浏览";
+    txtCreditOut = gcnew TextBox();  txtCreditOut->Location = Drawing::Point(382, 22); txtCreditOut->Size = Drawing::Size(220, 23);
+    btnBrowseCreditOut = gcnew Button(); btnBrowseCreditOut->Location = Drawing::Point(607, 20); btnBrowseCreditOut->Size = Drawing::Size(60, 25); btnBrowseCreditOut->Text = L"浏览";
+    btnCredit = gcnew Button();      btnCredit->Location = Drawing::Point(670, 20); btnCredit->Size = Drawing::Size(58, 25); btnCredit->Text = L"执行";
     gbC->Controls->AddRange(gcnew array<Control^>{ txtCreditIn, btnBrowseCreditIn, txtCreditOut, btnBrowseCreditOut, btnCredit });
     this->Controls->Add(gbC);
     btnBrowseCreditIn->Click += gcnew EventHandler(this, &MainForm::btnBrowseCreditIn_Click);
@@ -124,13 +137,13 @@ MainForm::MainForm()
     // ============ 导出 ============
     GroupBox^ gbE = gcnew GroupBox();
     gbE->Text = L"导出 (Export：目录打包成标准 zip)";
-    gbE->Location = Point(12, y); gbE->Size = Size(736, 64);
-    txtExportDir = gcnew TextBox();  txtExportDir->Location = Point(12, 22); txtExportDir->Size = Size(260, 23); txtExportDir->PlaceholderText = L"要打包的目录";
-    btnBrowseExportDir = gcnew Button(); btnBrowseExportDir->Location = Point(277, 20); btnBrowseExportDir->Size = Size(60, 25); btnBrowseExportDir->Text = L"目录";
-    txtExportOut = gcnew TextBox();  txtExportOut->Location = Point(342, 22); txtExportOut->Size = Size(220, 23); txtExportOut->PlaceholderText = L"输出 .zip";
-    btnBrowseExportOut = gcnew Button(); btnBrowseExportOut->Location = Point(567, 20); btnBrowseExportOut->Size = Size(60, 25); btnBrowseExportOut->Text = L"浏览";
-    txtSplit = gcnew TextBox();      txtSplit->Location = Point(632, 22); txtSplit->Size = Size(60, 23); txtSplit->PlaceholderText = L"分卷如100M";
-    btnExport = gcnew Button();      btnExport->Location = Point(695, 20); btnExport->Size = Size(55, 25); btnExport->Text = L"导出";
+    gbE->Location = Drawing::Point(12, y); gbE->Size = Drawing::Size(736, 64);
+    txtExportDir = gcnew TextBox();  txtExportDir->Location = Drawing::Point(12, 22); txtExportDir->Size = Drawing::Size(260, 23);
+    btnBrowseExportDir = gcnew Button(); btnBrowseExportDir->Location = Drawing::Point(277, 20); btnBrowseExportDir->Size = Drawing::Size(60, 25); btnBrowseExportDir->Text = L"目录";
+    txtExportOut = gcnew TextBox();  txtExportOut->Location = Drawing::Point(342, 22); txtExportOut->Size = Drawing::Size(220, 23);
+    btnBrowseExportOut = gcnew Button(); btnBrowseExportOut->Location = Drawing::Point(567, 20); btnBrowseExportOut->Size = Drawing::Size(60, 25); btnBrowseExportOut->Text = L"浏览";
+    txtSplit = gcnew TextBox();      txtSplit->Location = Drawing::Point(632, 22); txtSplit->Size = Drawing::Size(60, 23);
+    btnExport = gcnew Button();      btnExport->Location = Drawing::Point(695, 20); btnExport->Size = Drawing::Size(55, 25); btnExport->Text = L"导出";
     gbE->Controls->AddRange(gcnew array<Control^>{ txtExportDir, btnBrowseExportDir, txtExportOut, btnBrowseExportOut, txtSplit, btnExport });
     this->Controls->Add(gbE);
     btnBrowseExportDir->Click += gcnew EventHandler(this, &MainForm::btnBrowseExportDir_Click);
@@ -142,11 +155,11 @@ MainForm::MainForm()
     // ============ 日志 ============
     GroupBox^ gbLog = gcnew GroupBox();
     gbLog->Text = L"日志 (详细见 patcher.log)";
-    gbLog->Location = Point(12, y); gbLog->Size = Size(736, 120);
+    gbLog->Location = Drawing::Point(12, y); gbLog->Size = Drawing::Size(736, 120);
     txtLog = gcnew TextBox();
-    txtLog->Location = Point(12, 20); txtLog->Size = Size(640, 86);
+    txtLog->Location = Drawing::Point(12, 20); txtLog->Size = Drawing::Size(640, 86);
     txtLog->Multiline = true; txtLog->ScrollBars = ScrollBars::Vertical; txtLog->ReadOnly = true;
-    btnClearLog = gcnew Button(); btnClearLog->Location = Point(660, 50); btnClearLog->Size = Size(65, 28); btnClearLog->Text = L"清空";
+    btnClearLog = gcnew Button(); btnClearLog->Location = Drawing::Point(660, 50); btnClearLog->Size = Drawing::Size(65, 28); btnClearLog->Text = L"清空";
     gbLog->Controls->AddRange(gcnew array<Control^>{ txtLog, btnClearLog });
     this->Controls->Add(gbLog);
     btnClearLog->Click += gcnew EventHandler(this, &MainForm::btnClearLog_Click);
@@ -165,26 +178,22 @@ void MainForm::BrowseFile(TextBox^ tb, String^ filter)
 {
     OpenFileDialog^ d = gcnew OpenFileDialog();
     d->Filter = filter;
-    if (d->ShowDialog() == DialogResult::OK) tb->Text = d->FileName;
+    d->FileName = tb->Text;
+    if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) tb->Text = d->FileName;
 }
 
 void MainForm::BrowseFolder(TextBox^ tb)
 {
     FolderBrowserDialog^ d = gcnew FolderBrowserDialog();
-    if (d->ShowDialog() == DialogResult::OK) tb->Text = d->SelectedPath;
+    if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) tb->Text = d->SelectedPath;
 }
 
 void MainForm::RefreshGames()
 {
     lstGames->Items->Clear();
-    /* C 回调无法直接持有托管句柄，用静态句柄中转 */
-    static ListBox^ s_lb = nullptr;
-    s_lb = lstGames;
-    game_list([](const game_entry_t *g, void *ud) -> int {
-        (void)ud;
-        s_lb->Items->Add(gcnew String(g->name) + L"  ->  " + gcnew String(g->path));
-        return 0;
-    }, nullptr);
+    g_gamesList = lstGames;            /* 由静态原生回调读取（托管类内不能捕获托管句柄） */
+    game_list(GameListCallback, nullptr);
+    g_gamesList = nullptr;
 }
 
 void MainForm::btnAddGame_Click(Object^, EventArgs^)
@@ -265,37 +274,37 @@ void MainForm::btnClearLog_Click(Object^, EventArgs^)
     txtLog->Clear();
 }
 
-// 浏览按钮（独立事件）
+// 浏览按钮
 void MainForm::btnBrowseGame_Click(Object^, EventArgs^)
 {
     OpenFileDialog^ d = gcnew OpenFileDialog();
     d->Filter = L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*";
-    if (d->ShowDialog() == DialogResult::OK) txtGamePath->Text = d->FileName;
+    if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) txtGamePath->Text = d->FileName;
 }
 void MainForm::btnBrowseUnpackIn_Click(Object^, EventArgs^)
 {
     BrowseFile(txtUnpackIn, L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
 }
 void MainForm::btnBrowseUnpackOut_Click(Object^, EventArgs^) { BrowseFolder(txtUnpackOut); }
-void MainForm::btnBrowseBuildIn_Click(Object^)
+void MainForm::btnBrowseBuildIn_Click(Object^, EventArgs^)
 {
     BrowseFile(txtBuildIn, L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
 }
 void MainForm::btnBrowseMod_Click(Object^, EventArgs^) { BrowseFolder(txtModDir); }
-void MainForm::btnBrowseBuildOut_Click(Object^)
+void MainForm::btnBrowseBuildOut_Click(Object^, EventArgs^)
 {
     BrowseFile(txtBuildOut, L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
 }
-void MainForm::btnBrowseCreditIn_Click(Object^)
+void MainForm::btnBrowseCreditIn_Click(Object^, EventArgs^)
 {
     BrowseFile(txtCreditIn, L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
 }
-void MainForm::btnBrowseCreditOut_Click(Object^)
+void MainForm::btnBrowseCreditOut_Click(Object^, EventArgs^)
 {
     BrowseFile(txtCreditOut, L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
 }
 void MainForm::btnBrowseExportDir_Click(Object^, EventArgs^) { BrowseFolder(txtExportDir); }
-void MainForm::btnBrowseExportOut_Click(Object^)
+void MainForm::btnBrowseExportOut_Click(Object^, EventArgs^)
 {
     BrowseFile(txtExportOut, L"ZIP 压缩包 (*.zip)|*.zip|所有文件 (*.*)|*.*");
 }

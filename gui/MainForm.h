@@ -1,9 +1,10 @@
 #pragma once
 
 // C++/CLI (.NET) WinForms GUI for Ren'Py Patcher
-// 仅 Windows 平台；底层复用同一套核心 C 库（renpy_core 的源文件直接编入本工程）。
+// 仅 Windows 平台；底层复用同一套核心 C 库（核心 .c 直接编入本工程）。
 
 #include <msclr/marshal_cppstd.h>
+#include <msclr/gcroot.h>
 
 #include "core/version.h"
 #include "rpa/rpa_v3.h"
@@ -18,6 +19,7 @@ namespace RenPyPatcherGUI {
 using namespace System;
 using namespace System::Windows::Forms;
 using namespace System::IO;
+using namespace System::Drawing;
 using namespace msclr::interop;
 
 /// <summary>

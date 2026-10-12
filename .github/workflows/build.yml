@@ -88,7 +88,7 @@ jobs:
         run: cmake -D VERSION_FILE=VERSION -P cmake/generate_version.cmake
 
       - name: Build GUI (patcher_gui)
-        run: msbuild gui/patcher_gui.vcxproj /p:Configuration=Release /p:Platform=x64
+        run: msbuild gui/patcher_gui.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgEnableManifest=true
 
       - name: Package GUI
         run: |
