@@ -35,16 +35,13 @@
 
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>..;$(VcpkgRoot)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;RP_NO_HOT_INJECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>Level3</WarningLevel>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <!-- 核心 .c 必须按 C++ 编译（项目启用 /clr，MSVC 不允许 C + /clr） -->
-      <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalLibraryDirectories>$(VcpkgRoot)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>zlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
@@ -62,27 +59,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- C++/CLI GUI 源 -->
+    <!-- C++/CLI GUI 源（仅此工程使用 /clr） -->
     <ClCompile Include="Program.cpp" />
     <ClCompile Include="MainForm.cpp" />
     <ClInclude Include="MainForm.h" />
+  </ItemGroup>
 
-    <!-- 核心 C 源（直接编入本工程，复用同一套实现；.c 由 C 编译器处理） -->
-    <ClCompile Include="..\core\plugin_loader.c" />
-    <ClCompile Include="..\core\game_mgr.c" />
-    <ClCompile Include="..\util\io_buf.c" />
-    <ClCompile Include="..\util\pickle_min.c" />
-    <ClCompile Include="..\util\pickle_write.c" />
-    <ClCompile Include="..\util\dir_walk.c" />
-    <ClCompile Include="..\util\log.c" />
-    <ClCompile Include="..\util\credit.c" />
-    <ClCompile Include="..\util\zip.c" />
-    <ClCompile Include="..\compress\zlib_wrap.c" />
-    <ClCompile Include="..\rpa\rpa_v3.c" />
-    <ClCompile Include="..\rpa\rpa_v3_repack.c" />
-    <ClCompile Include="..\mod\mod_loader.c" />
-    <ClCompile Include="..\inject\direct\direct_inject.c" />
-    <ClCompile Include="..\inject\export\export_module.c" />
+  <ItemGroup>
+    <!-- 依赖核心静态库（自动构建并链接 renpy_core.lib） -->
+    <ProjectReference Include="renpy_core.vcxproj">
+      <Project>{A1B2C3D4-0000-0000-0000-000000000001}</Project>
+    </ProjectReference>
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

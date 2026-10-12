@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{A1B2C3D4-0000-0000-0000-000000000001}</ProjectGuid>
+    <RootNamespace>renpy_core</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration">
+    <PlatformToolset>v143</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <!-- 纯 C 编译（不带 /clr），使用 C11 标准以容纳指定初始化器/复合字面量 -->
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;RP_NO_HOT_INJECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <!-- 核心 C 源（纯 C 静态库，供 /clr GUI 链接） -->
+    <ClCompile Include="..\core\plugin_loader.c" />
+    <ClCompile Include="..\core\game_mgr.c" />
+    <ClCompile Include="..\util\io_buf.c" />
+    <ClCompile Include="..\util\pickle_min.c" />
+    <ClCompile Include="..\util\pickle_write.c" />
+    <ClCompile Include="..\util\dir_walk.c" />
+    <ClCompile Include="..\util\log.c" />
+    <ClCompile Include="..\util\credit.c" />
+    <ClCompile Include="..\util\zip.c" />
+    <ClCompile Include="..\compress\zlib_wrap.c" />
+    <ClCompile Include="..\rpa\rpa_v3.c" />
+    <ClCompile Include="..\rpa\rpa_v3_repack.c" />
+    <ClCompile Include="..\mod\mod_loader.c" />
+    <ClCompile Include="..\inject\direct\direct_inject.c" />
+    <ClCompile Include="..\inject\export\export_module.c" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
