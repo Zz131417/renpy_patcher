@@ -80,7 +80,10 @@ target_include_directories(patcher PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # 仅 Windows：复用同一套核心 C 实现（renpy_core 静态库），
 # GUI 用 C++/CLI（/clr）调用，功能与 CLI 完全对齐。
 if(WIN32)
-    add_executable(patcher_gui WIN32
+    # 注意：不要加 WIN32。WIN32 会让链接器要求 native WinMain，
+    # 但 C++/CLI 程序的入口是托管 main()（见 gui/Program.cpp），
+    # 故保持默认 CONSOLE 子系统以 main 为入口，链接即可通过。
+    add_executable(patcher_gui
         gui/Program.cpp
         gui/MainForm.cpp
         gui/MainForm.h
