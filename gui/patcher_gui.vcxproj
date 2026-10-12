@@ -46,8 +46,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <AdditionalDependencies>zlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <!-- /clr 工程下 vcpkg 不会自动注入 LIBPATH，手动补上（宏由 vcpkg 集成定义） -->
-      <AdditionalLibraryDirectories>$(VcpkgInstalledDir)$(VcpkgTriplet)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- /clr 工程下 vcpkg 不注入 LIBPATH，手动指向仓库根 vcpkg_installed（含两层 triplet 目录） -->
+      <AdditionalLibraryDirectories>$(ProjectDir)..\vcpkg_installed\x64-windows\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PreBuildEvent>
       <Command>cmake -D VERSION_FILE=..\VERSION -P ..\cmake\generate_version.cmake</Command>
