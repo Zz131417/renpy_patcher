@@ -39,6 +39,8 @@
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;RP_NO_HOT_INJECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>Level3</WarningLevel>
       <TreatWarningAsError>false</TreatWarningAsError>
+      <!-- 核心 .c 必须按 C++ 编译（项目启用 /clr，MSVC 不允许 C + /clr） -->
+      <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
