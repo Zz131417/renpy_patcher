@@ -269,19 +269,25 @@ Notes:
 
 ## GUI Version (Windows / .NET WinForms)
 
-Besides the CLI, there is a **GUI version** (Windows only, C++/CLI + .NET WinForms) with **feature parity** to the CLI, sharing the exact same core C implementation:
+Besides the CLI, there is a **GUI version** (Windows only, C++/CLI + .NET WinForms) with **feature parity** to the CLI, sharing the same core C implementation (one `renpy_core` static library):
 
 - Game management: add / remove / list aliases
 - Unpack / Inject (build, auto credit) / Credit / Export (with split)
 
-Source lives on the **`gui`** branch; project files `gui/patcher_gui.sln` + `gui/patcher_gui.vcxproj`. The GUI compiles the core `.c` files into the same executable, so CLI and GUI stay in sync.
+The GUI, the core library and the CLI are all built from a single `CMakeLists.txt`. zlib is vendored as source under `third_party/zlib`, so **no vcpkg / system zlib / network** is required.
 
 ### Build GUI (Windows)
-1. Install Visual Studio 2019/2022 ("Desktop development with C++" + "C++/CLI support").
-2. Install zlib via vcpkg: `vcpkg install zlib:x64-windows` then `vcpkg integrate install`.
-3. Open `gui/patcher_gui.sln` or run `gui/build_gui.bat`; output `gui/x64/Release/patcher_gui.exe`.
 
-> Note: the GUI excludes the hot-injection module (it depends on libpython); `RP_NO_HOT_INJECT` is defined so it is not compiled in. All other features match the CLI.
+1. Install Visual Studio 2019/2022 ("Desktop development with C++" + "C++/CLI support" + ".NET Framework 4.8 development tools").
+2. Configure and build with CMake (this also builds the CLI and the bundled zlib, and emits `patcher_gui.exe`):
+   ```bash
+   cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+   cmake --build build --config Release
+   ```
+   Or just open the folder as a CMake project in Visual Studio.
+3. Output: `build/Release/patcher_gui.exe` (alongside `patcher.exe`).
+
+> Note: the GUI reuses the same core library. The hot-injection `agent.dll` is only built when a Python dev package is present; the GUI itself does not depend on Python.
 
 
 ## Source Credit
@@ -347,7 +353,7 @@ git tag v0.1 && git push origin v0.1
 | M3 | Direct injection (merge mod → repack) | ✅ Done |
 | M4 | Hot injection (Windows process injection + CPython bridge) | 🔲 Needs Windows test |
 | M5 | Export / split (standard zip, in-house util/zip) | ✅ Done |
-| GUI | Windows GUI (C++/CLI WinForms, on par with CLI) | ✅ Done (gui branch) |
+| GUI | Windows GUI (C++/CLI WinForms, on par with CLI, CMake unified build) | ✅ Done |
 | M6 | GUI (C# shell referencing the core static lib) | 🔲 Not implemented |
 | M7 | External plugin DLL auto-load (registry entry reserved) | 🔲 Not implemented |
 | M8 | Translation pipeline | 🔲 Not implemented |

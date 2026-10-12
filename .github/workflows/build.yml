@@ -13,36 +13,28 @@ permissions:
 
 jobs:
   build:
-    name: Build CLI (${{ matrix.os }})
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            asset: patcher-linux-x64
+            asset_cli: patcher-linux-x64
           - os: windows-latest
-            asset: patcher-windows-x64
+            asset_cli: patcher-windows-x64
+            asset_gui: patcher-gui-windows-x64
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install zlib (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
 
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
         uses: microsoft/setup-msbuild@v2
 
-      # Windows 走 vcpkg：仓库根 vcpkg.json 声明 zlib 依赖，
-      # 下面 Configure 用 vcpkg toolchain 时会在 manifest 模式自动拉取 zlib。
-      - name: Configure (Windows / vcpkg manifest)
-        if: runner.os == 'Windows'
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
-
-      - name: Configure (Linux)
-        if: runner.os == 'Linux'
+      # zlib 源码已内置在 third_party/zlib，由 CMake add_subdirectory 构建，
+      # 无需 vcpkg / 系统 zlib / 网络连接。
+      - name: Configure
         run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
@@ -52,69 +44,40 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           cd build
-          zip -r ../${{ matrix.asset }}.zip patcher
+          zip -r ../${{ matrix.asset_cli }}.zip patcher
           cd ..
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           cd build/Release
-          7z a ../../${{ matrix.asset }}.zip patcher.exe agent.dll
+          # CLI 产物（agent.dll 仅在装有 Python 开发包时生成，故可选）
+          $cli = 'patcher.exe'
+          if (Test-Path agent.dll) { $cli += ';agent.dll' }
+          7z a ../../${{ matrix.asset_cli }}.zip $cli.Split(';')
+          # GUI 产物
+          7z a ../../${{ matrix.asset_gui }}.zip patcher_gui.exe
           cd ../..
 
-      - name: Upload build artifact
+      - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}.zip
+          name: ${{ matrix.asset_cli }}
+          path: ${{ matrix.asset_cli }}.zip
           if-no-files-found: error
 
-  build-gui:
-    name: Build GUI (Windows .NET)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup MSVC + .NET
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Install zlib via vcpkg
-        run: |
-          # 仓库根有 vcpkg.json。CI runner 上 vcpkg 走经典模式，把 zlib 装到
-          # $VCPKG_INSTALLATION_ROOT/packages；无需 `vcpkg integrate install`（无管理员权限）。
-          vcpkg install --triplet x64-windows
-
-      - name: Generate core/version.h
-        run: cmake -D VERSION_FILE=VERSION -P cmake/generate_version.cmake
-
-      - name: Build GUI (patcher_gui)
-        run: |
-          # 动态定位 zlib 的 include 与 lib 目录（经典模式装到 $VCPKG_INSTALLATION_ROOT/packages），
-          # 优先取非 debug 的 lib。两个目录作为全局属性传给 msbuild（一并传给被引用的 renpy_core）。
-          $inc = (Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT/packages" -Filter zlib.h -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName
-          $lib = (Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT/packages" -Filter zlib.lib -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -notmatch '\\debug\\' } | Select-Object -First 1).DirectoryName
-          if (-not $inc) { Write-Error "未找到 zlib.h"; exit 1 }
-          if (-not $lib) { Write-Error "未找到 zlib.lib"; exit 1 }
-          Write-Host "zlib include: $inc"
-          Write-Host "zlib lib:     $lib"
-          msbuild gui/patcher_gui.vcxproj /p:Configuration=Release /p:Platform=x64 /p:ZlibIncludeDir="$inc" /p:ZlibLibDir="$lib"
-
-      - name: Package GUI
-        run: |
-          cd gui/x64/Release
-          7z a ../../../../patcher-gui-windows-x64.zip patcher_gui.exe
-          cd ../../..
-
       - name: Upload GUI artifact
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: patcher-gui-windows-x64
-          path: patcher-gui-windows-x64.zip
+          name: ${{ matrix.asset_gui }}
+          path: ${{ matrix.asset_gui }}.zip
           if-no-files-found: error
 
   release:
     name: Release on tag
-    needs: [ build, build-gui ]
+    needs: [ build ]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

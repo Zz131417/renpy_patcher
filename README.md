@@ -174,19 +174,25 @@ patcher export <dir> -o patch.zip -split 100M  # 分卷：生成 .z01 .z02 ... .
 
 ## GUI 版（Windows / .NET WinForms）
 
-除命令行外，本项目另提供 **GUI 版**（仅 Windows，C++/CLI + .NET WinForms），与 CLI **功能完全对齐**，共用同一套核心 C 实现：
+除命令行外，本项目另提供 **GUI 版**（仅 Windows，C++/CLI + .NET WinForms），与 CLI **功能完全对齐**，共用同一套核心 C 实现（同一个 `renpy_core` 静态库）：
 
 - 游戏管理：登记 / 删除 / 列出别名
 - 解包 / 注入（build，自动写来源声明）/ 来源声明（credit）/ 导出（export，可分卷）
 
-代码位于分支 **`gui`**，工程文件 `gui/patcher_gui.sln` + `gui/patcher_gui.vcxproj`。GUI 直接把核心 `.c` 编入同一个程序，保证 CLI 与 GUI 行为一致、同步更新。
+GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源码形式内置在 `third_party/zlib`，**无需 vcpkg / 系统 zlib / 联网**。
 
 ### 构建 GUI（Windows）
-1. 安装 Visual Studio 2019/2022（「使用 C++ 的桌面开发」+「C++/CLI 支持」）。
-2. 用 vcpkg 安装 zlib：`vcpkg install zlib:x64-windows` 并执行 `vcpkg integrate install`。
-3. 双击 `gui/patcher_gui.sln` 或用 `gui/build_gui.bat` 构建，输出 `gui/x64/Release/patcher_gui.exe`。
 
-> 说明：GUI 排除热注入模块（Windows 热注入依赖 libpython，GUI 版定义 `RP_NO_HOT_INJECT` 不编入），其余功能与 CLI 完全一致。
+1. 安装 Visual Studio 2019/2022（「使用 C++ 的桌面开发」+「C++/CLI 支持」+「.NET Framework 4.8 开发工具」）。
+2. 用 CMake 配置并构建（自动产出 `patcher_gui.exe`，同时构建 CLI 与内置 zlib）：
+   ```bash
+   cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+   cmake --build build --config Release
+   ```
+   也可在 VS 中「打开 CMake 项目」。
+3. 输出：`build/Release/patcher_gui.exe`（同目录另有 `patcher.exe`）。
+
+> 说明：GUI 复用同一核心库；热注入 `agent.dll` 仅在装有 Python 开发包时一并构建，GUI 本身不依赖 Python。
 
 
 ## 版本管理
@@ -211,7 +217,7 @@ patcher export <dir> -o patch.zip -split 100M  # 分卷：生成 .z01 .z02 ... .
 | M3 | 直接注入（合并 mod → 重打包） | ✅ 完成 |
 | M4 | 热注入代码（Windows 进程注入 + CPython 桥） | 🔲 待 Windows 实测 |
 | M5 | 导出 / 分卷（标准 zip，自研 util/zip） | ✅ 完成 |
-| GUI | Windows GUI 版（C++/CLI WinForms，与 CLI 功能对齐） | ✅ 完成（gui 分支） |
+| GUI | Windows GUI 版（C++/CLI WinForms，与 CLI 功能对齐，CMake 统一构建） | ✅ 完成 |
 | M6 | GUI（C# 壳，引用 core 静态库） | 🔲 未实现 |
 | M7 | 外部插件 DLL 自动加载（注册表入口已预留） | 🔲 未实现 |
 | M8 | 翻译流水线 | 🔲 未实现 |

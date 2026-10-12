@@ -1,8 +1,0 @@
-{
-  "name": "renpy-patcher",
-  "version": "0.2.0",
-  "description": "Ren'Py 汉化/Mod 补丁工具 - 纯C核心引擎 + 可扩展模块架构",
-  "dependencies": [
-    "zlib"
-  ]
-}
