@@ -78,10 +78,11 @@ jobs:
       - name: Setup MSVC + .NET
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install zlib via vcpkg (manifest)
+      - name: Install zlib via vcpkg (manifest mode)
         run: |
           vcpkg integrate install
-          vcpkg install zlib:x64-windows
+          # 仓库根有 vcpkg.json（manifest 模式），直接 install 会从清单安装 zlib
+          vcpkg install
 
       - name: Generate core/version.h
         run: cmake -D VERSION_FILE=VERSION -P cmake/generate_version.cmake
