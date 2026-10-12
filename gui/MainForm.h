@@ -101,6 +101,12 @@ private:
     void btnBrowseCreditOut_Click(Object^, EventArgs^);
     void btnBrowseExportDir_Click(Object^, EventArgs^);
     void btnBrowseExportOut_Click(Object^, EventArgs^);
+
+    // ---- 报错显示 / 防崩溃 辅助 ----
+    void SyncLog();
+    void ReportFail(String^ op, int rc);
+    bool CheckFile(String^ tb, String^ label);
+    bool CheckDir(String^ tb, String^ label);
 };
 
 } // namespace RenPyPatcherGUI

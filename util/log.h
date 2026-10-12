@@ -24,6 +24,12 @@ void log_set_tag(const char *tag);
 /* 格式化写日志（用法同 printf） */
 void log_printf(int level, const char *fmt, ...);
 
+/* 设置 / 获取最近一条错误详情（log_error 会自动写入 g_last_err） */
+void rp_set_error(const char *fmt, ...);
+const char *rp_last_error(void);
+/* 错误码 -> 中文描述（供 GUI 显示详细报错） */
+const char *rp_strerror(int code);
+
 #define log_debug(...) log_printf(LOG_DEBUG, __VA_ARGS__)
 #define log_info(...)  log_printf(LOG_INFO,  __VA_ARGS__)
 #define log_warn(...)  log_printf(LOG_WARN,  __VA_ARGS__)

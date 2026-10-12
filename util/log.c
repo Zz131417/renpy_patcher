@@ -4,13 +4,15 @@
  * 无第三方依赖；单线程 CLI 场景足够。
  */
 #include "util/log.h"
+#include "core/plugin.h"   /* RP_OK 等错误码，供 rp_strerror 使用 */
 #include <time.h>
 #include <stdarg.h>
 #include <string.h>
 
 static FILE *g_logf  = NULL;
 static int   g_level = LOG_INFO;
-static char  g_tag[64] = "";   /* 已含方括号，如 "[main]" 或空 */
+static char  g_tag[64] = "";
+static char  g_last_err[1024] = "";   /* 最近一条错误详情，供 GUI 取回 */   /* 已含方括号，如 "[main]" 或空 */
 
 void log_set_tag(const char *tag) {
     if (tag && *tag) snprintf(g_tag, sizeof(g_tag), "[%s]", tag);
@@ -58,5 +60,33 @@ void log_printf(int level, const char *fmt, ...) {
     if (g_logf) {
         fprintf(g_logf, "%s%s\n", hdr, msg);
         fflush(g_logf);
+    }
+
+    if (level >= LOG_ERROR) {
+        strncpy(g_last_err, msg, sizeof(g_last_err) - 1);
+        g_last_err[sizeof(g_last_err) - 1] = 0;
+    }
+}
+
+/* ---- 最后错误 / 错误码翻译（供 GUI 显示详细报错）---- */
+void rp_set_error(const char *fmt, ...)
+{
+    va_list ap; va_start(ap, fmt);
+    vsnprintf(g_last_err, sizeof(g_last_err), fmt, ap);
+    va_end(ap);
+}
+const char *rp_last_error(void) { return g_last_err; }
+
+const char *rp_strerror(int code)
+{
+    switch (code) {
+        case RP_OK:         return "成功";
+        case RP_ERR_NOMEM:  return "内存不足";
+        case RP_ERR_IO:     return "I/O 错误（文件打开/读取/写入失败）";
+        case RP_ERR_FORMAT: return "文件格式错误（不是有效的资源包或数据）";
+        case RP_ERR_NOTSUP: return "不支持的操作";
+        case RP_ERR_GENERIC:return "通用错误";
+        case RP_ERR_PLUGIN: return "插件加载或执行错误";
+        default:            return "未知错误";
     }
 }

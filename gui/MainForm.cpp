@@ -1,6 +1,8 @@
 // gui/MainForm.cpp —— WinForms 主窗体实现（C++/CLI）
 #include "MainForm.h"
 
+static long g_logPos = 0;   // 已读取的 patcher.log 字节数，用于增量同步到日志框
+
 using namespace System;
 using namespace System::Windows::Forms;
 using namespace System::IO;
@@ -166,6 +168,7 @@ MainForm::MainForm()
 
     RefreshGames();
     AppendLog(gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING) + L" 已启动");
+    SyncLog();   // 启动即把已有日志（含历史错误）载入界面
 }
 
 void MainForm::AppendLog(String^ msg)
@@ -198,23 +201,33 @@ void MainForm::RefreshGames()
 
 void MainForm::btnAddGame_Click(Object^, EventArgs^)
 {
-    std::string name = ToUtf8(txtAlias->Text->Trim());
-    std::string path = ToUtf8(txtGamePath->Text->Trim());
-    if (name.empty() || path.empty()) { AppendLog(L"[游戏管理] 别名与路径均不能为空"); return; }
-    int rc = game_add(name.c_str(), path.c_str(), "");
-    if (rc == RP_OK) { AppendLog(gcnew String("已添加游戏: ") + txtAlias->Text->Trim()); RefreshGames(); }
-    else AppendLog(gcnew String("[游戏管理] 添加失败，错误码 ") + rc.ToString());
+    try {
+        std::string name = ToUtf8(txtAlias->Text->Trim());
+        std::string path = ToUtf8(txtGamePath->Text->Trim());
+        if (name.empty() || path.empty()) { AppendLog(L"[游戏管理] 别名与路径均不能为空"); return; }
+        int rc = game_add(name.c_str(), path.c_str(), "");
+        if (rc == RP_OK) { AppendLog(gcnew String("已添加游戏: ") + txtAlias->Text->Trim()); RefreshGames(); }
+        else ReportFail(L"游戏管理-添加", rc);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
 }
 
 void MainForm::btnRemoveGame_Click(Object^, EventArgs^)
 {
-    if (lstGames->SelectedIndex < 0) { AppendLog(L"[游戏管理] 请先在列表选择要删除的游戏"); return; }
-    String^ item = safe_cast<String^>(lstGames->SelectedItem);
-    int sp = item->IndexOf(L"  ->  ");
-    String^ name = (sp > 0) ? item->Substring(0, sp) : item;
-    int rc = game_remove(ToUtf8(name).c_str());
-    if (rc == RP_OK) { AppendLog(gcnew String("已删除游戏: ") + name); RefreshGames(); }
-    else AppendLog(gcnew String("[游戏管理] 删除失败，错误码 ") + rc.ToString());
+    try {
+        if (lstGames->SelectedIndex < 0) { AppendLog(L"[游戏管理] 请先在列表选择要删除的游戏"); return; }
+        String^ item = safe_cast<String^>(lstGames->SelectedItem);
+        int sp = item->IndexOf(L"  ->  ");
+        String^ name = (sp > 0) ? item->Substring(0, sp) : item;
+        int rc = game_remove(ToUtf8(name).c_str());
+        if (rc == RP_OK) { AppendLog(gcnew String("已删除游戏: ") + name); RefreshGames(); }
+        else ReportFail(L"游戏管理-删除", rc);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
 }
 
 void MainForm::btnRefreshGames_Click(Object^, EventArgs^)
@@ -225,48 +238,73 @@ void MainForm::btnRefreshGames_Click(Object^, EventArgs^)
 
 void MainForm::btnUnpack_Click(Object^, EventArgs^)
 {
-    std::string in  = ToUtf8(txtUnpackIn->Text->Trim());
-    std::string out = ToUtf8(txtUnpackOut->Text->Trim());
-    if (in.empty()) { AppendLog(L"[解包] 请输入 .rpa 或别名"); return; }
-    if (out.empty()) out = "out";
-    AppendLog(gcnew String("[解包] 开始: ") + txtUnpackIn->Text->Trim());
-    int rc = rpa_v3_unpack(in.c_str(), out.c_str());
-    AppendLog(rc == RP_OK ? L"[解包] 完成 ✅" : gcnew String("[解包] 失败，错误码 ") + rc.ToString());
+    try {
+        if (!CheckFile(txtUnpackIn, L"解包-输入")) return;
+        std::string in  = ToUtf8(txtUnpackIn->Text->Trim());
+        std::string out = ToUtf8(txtUnpackOut->Text->Trim());
+        if (out.empty()) out = "out";
+        AppendLog(gcnew String("[解包] 开始: ") + txtUnpackIn->Text->Trim());
+        int rc = rpa_v3_unpack(in.c_str(), out.c_str());
+        if (rc == RP_OK) AppendLog(L"[解包] 完成 ✅");
+        else ReportFail(L"解包", rc);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
 }
 
 void MainForm::btnBuild_Click(Object^, EventArgs^)
 {
-    std::string game = ToUtf8(txtBuildIn->Text->Trim());
-    std::string mod  = ToUtf8(txtModDir->Text->Trim());
-    std::string out  = ToUtf8(txtBuildOut->Text->Trim());
-    if (game.empty() || mod.empty()) { AppendLog(L"[注入] 游戏与 mod 目录不能为空"); return; }
-    if (out.empty()) out = "patched.rpa";
-    AppendLog(gcnew String("[注入] 开始: ") + txtBuildIn->Text->Trim() + L" + " + txtModDir->Text->Trim());
-    int rc = direct_inject_build(game.c_str(), mod.c_str(), out.c_str());
-    AppendLog(rc == RP_OK ? L"[注入] 完成 ✅ (已自动写入来源声明)" : gcnew String("[注入] 失败，错误码 ") + rc.ToString());
+    try {
+        if (!CheckFile(txtBuildIn, L"注入-游戏")) return;
+        if (!CheckDir(txtModDir, L"注入-mod目录")) return;
+        std::string game = ToUtf8(txtBuildIn->Text->Trim());
+        std::string mod  = ToUtf8(txtModDir->Text->Trim());
+        std::string out  = ToUtf8(txtBuildOut->Text->Trim());
+        if (out.empty()) out = "patched.rpa";
+        AppendLog(gcnew String("[注入] 开始: ") + txtBuildIn->Text->Trim() + L" + " + txtModDir->Text->Trim());
+        int rc = direct_inject_build(game.c_str(), mod.c_str(), out.c_str());
+        if (rc == RP_OK) AppendLog(L"[注入] 完成 ✅ (已自动写入来源声明)");
+        else ReportFail(L"注入", rc);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
 }
 
 void MainForm::btnCredit_Click(Object^, EventArgs^)
 {
-    std::string in  = ToUtf8(txtCreditIn->Text->Trim());
-    std::string out = ToUtf8(txtCreditOut->Text->Trim());
-    if (in.empty()) { AppendLog(L"[声明] 请输入 .rpa 或别名"); return; }
-    if (out.empty()) out = "credited.rpa";
-    AppendLog(gcnew String("[声明] 开始: ") + txtCreditIn->Text->Trim());
-    int rc = credit_add_to_rpa(in.c_str(), out.c_str(), in.c_str());
-    AppendLog(rc == RP_OK ? L"[声明] 完成 ✅" : gcnew String("[声明] 失败，错误码 ") + rc.ToString());
+    try {
+        if (!CheckFile(txtCreditIn, L"声明-输入")) return;
+        std::string in  = ToUtf8(txtCreditIn->Text->Trim());
+        std::string out = ToUtf8(txtCreditOut->Text->Trim());
+        if (out.empty()) out = "credited.rpa";
+        AppendLog(gcnew String("[声明] 开始: ") + txtCreditIn->Text->Trim());
+        int rc = credit_add_to_rpa(in.c_str(), out.c_str(), in.c_str());
+        if (rc == RP_OK) AppendLog(L"[声明] 完成 ✅");
+        else ReportFail(L"声明", rc);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
 }
 
 void MainForm::btnExport_Click(Object^, EventArgs^)
 {
-    std::string dir = ToUtf8(txtExportDir->Text->Trim());
-    std::string out = ToUtf8(txtExportOut->Text->Trim());
-    if (dir.empty()) { AppendLog(L"[导出] 请选择要打包的目录"); return; }
-    if (out.empty()) out = "patch.zip";
-    size_t split = ParseSize(txtSplit->Text);
-    AppendLog(gcnew String("[导出] 开始: ") + txtExportDir->Text->Trim());
-    int rc = export_dir(dir.c_str(), out.c_str(), split, 1);
-    AppendLog(rc == RP_OK ? L"[导出] 完成 ✅" : gcnew String("[导出] 失败，错误码 ") + rc.ToString());
+    try {
+        if (!CheckDir(txtExportDir, L"导出-目录")) return;
+        std::string dir = ToUtf8(txtExportDir->Text->Trim());
+        std::string out = ToUtf8(txtExportOut->Text->Trim());
+        if (out.empty()) out = "patch.zip";
+        size_t split = ParseSize(txtSplit->Text);
+        AppendLog(gcnew String("[导出] 开始: ") + txtExportDir->Text->Trim());
+        int rc = export_dir(dir.c_str(), out.c_str(), split, 1);
+        if (rc == RP_OK) AppendLog(L"[导出] 完成 ✅");
+        else ReportFail(L"导出", rc);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
 }
 
 void MainForm::btnClearLog_Click(Object^, EventArgs^)
@@ -307,6 +345,53 @@ void MainForm::btnBrowseExportDir_Click(Object^, EventArgs^) { BrowseFolder(txtE
 void MainForm::btnBrowseExportOut_Click(Object^, EventArgs^)
 {
     BrowseFile(txtExportOut, L"ZIP 压缩包 (*.zip)|*.zip|所有文件 (*.*)|*.*");
+}
+
+void MainForm::SyncLog()
+{
+    try {
+        String^ p = "patcher.log";
+        if (!System::IO::File::Exists(p)) return;
+        System::IO::FileInfo^ fi = gcnew System::IO::FileInfo(p);
+        long cur = fi->Length;
+        if (cur < g_logPos) g_logPos = 0;          // 日志被重建，从头读
+        if (cur == g_logPos) return;
+        System::IO::FileStream^ fs = gcnew System::IO::FileStream(p,
+            System::IO::FileMode::Open, System::IO::FileAccess::Read, System::IO::FileShare::ReadWrite);
+        fs->Seek(g_logPos, System::IO::SeekOrigin::Begin);
+        System::IO::StreamReader^ sr = gcnew System::IO::StreamReader(fs);
+        String^ tail = sr->ReadToEnd();
+        if (tail != nullptr && tail->Length > 0) {
+            txtLog->AppendText(tail);
+            txtLog->ScrollToCaret();
+        }
+        g_logPos = fi->Length;
+        fs->Close();
+    }
+    catch (...) { /* 日志读取异常不影响主流程 */ }
+}
+
+void MainForm::ReportFail(String^ op, int rc)
+{
+    String^ meaning = gcnew String(rp_strerror(rc));
+    String^ detail  = gcnew String(rp_last_error());
+    String^ msg = L"[" + op + L"] 失败：错误码 " + rc.ToString() + L" (" + meaning + L")";
+    if (detail != nullptr && detail->Length > 0) msg += L" | 详情: " + detail;
+    AppendLog(msg);
+}
+
+bool MainForm::CheckFile(String^ tb, String^ label)
+{
+    if (String::IsNullOrWhiteSpace(tb)) { AppendLog(L"[" + label + L"] 路径为空"); return false; }
+    if (!System::IO::File::Exists(tb))  { AppendLog(L"[" + label + L"] 文件不存在: " + tb); return false; }
+    return true;
+}
+
+bool MainForm::CheckDir(String^ tb, String^ label)
+{
+    if (String::IsNullOrWhiteSpace(tb))       { AppendLog(L"[" + label + L"] 路径为空"); return false; }
+    if (!System::IO::Directory::Exists(tb))   { AppendLog(L"[" + label + L"] 目录不存在: " + tb); return false; }
+    return true;
 }
 
 } // namespace RenPyPatcherGUI
