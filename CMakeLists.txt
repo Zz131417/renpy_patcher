@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.17)
 project(renpy_patcher C CXX)
 
 set(CMAKE_C_STANDARD 11)
@@ -85,15 +85,14 @@ if(WIN32)
         gui/MainForm.cpp
         gui/MainForm.h
     )
-    # 开启 C++/CLI（/clr）并绑定 .NET Framework 4.8
-    set_property(TARGET patcher_gui PROPERTY VS_CLR_SUPPORT "true")
-    set_property(TARGET patcher_gui PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "v4.8")
-    set_property(TARGET patcher_gui PROPERTY VS_DOTNET_REFERENCES
-        "System;System.Core;System.Drawing;System.Windows.Forms;System.Xml")
-
-    # /clr 需要 /permissive（关闭一致性模式），否则 MSVC 报错
-    target_compile_options(patcher_gui PRIVATE /permissive)
-
+    # 显式开启 C++/CLI（/clr）——比 VS_CLR_SUPPORT 属性更可靠，确保 /clr 被注入编译命令。
+    # /EHa：/clr 要求的异常处理模型；/permissive：关闭一致性模式（/clr 需要）。
+    target_compile_options(patcher_gui PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/clr /EHa /permissive>)
+    # 绑定 .NET Framework 4.8 并引用 WinForms 等程序集
+    set_target_properties(patcher_gui PROPERTIES
+        VS_DOTNET_TARGET_FRAMEWORK_VERSION "v4.8"
+        VS_DOTNET_REFERENCES "System;System.Core;System.Drawing;System.Windows.Forms;System.Xml"
+    )
     target_link_libraries(patcher_gui PRIVATE renpy_core)
     target_include_directories(patcher_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
