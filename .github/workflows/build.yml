@@ -80,15 +80,20 @@ jobs:
 
       - name: Install zlib via vcpkg (manifest mode)
         run: |
-          vcpkg integrate install
-          # 仓库根有 vcpkg.json（manifest 模式），直接 install 会从清单安装 zlib
-          vcpkg install
+          # 仓库根有 vcpkg.json（manifest 模式）。无需 `vcpkg integrate install`：
+          # CI 无管理员权限，且 /clr 工程不会自动注入库搜索路径。
+          vcpkg install --triplet x64-windows
 
       - name: Generate core/version.h
         run: cmake -D VERSION_FILE=VERSION -P cmake/generate_version.cmake
 
       - name: Build GUI (patcher_gui)
-        run: msbuild gui/patcher_gui.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VcpkgEnableManifest=true
+        run: |
+          # 动态定位 zlib.lib，传给 /clr 工程的 ZlibLibDir（vcpkg 不会为 /clr 自动注入 LIBPATH）
+          $zlib = (Get-ChildItem -Recurse vcpkg_installed -Filter zlib.lib | Select-Object -First 1).DirectoryName
+          if (-not $zlib) { Write-Error "未找到 zlib.lib"; exit 1 }
+          Write-Host "zlib lib dir: $zlib"
+          msbuild gui/patcher_gui.vcxproj /p:Configuration=Release /p:Platform=x64 /p:ZlibLibDir="$zlib"
 
       - name: Package GUI
         run: |

@@ -29,9 +29,9 @@
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>false</WholeProgramOptimization>
-    <!-- vcpkg manifest 模式：自动注入 zlib 的 include/lib，无需硬编码 $(VcpkgRoot) -->
-    <VcpkgEnableManifest>true</VcpkgEnableManifest>
-    <VcpkgTriplet>x64-windows</VcpkgTriplet>
+    <!-- 注意：/clr 工程下 vcpkg 的 manifest 自动注入不可靠，zlib 库路径由 CI 通过
+         /p:ZlibLibDir=... 传入（见 .github/workflows/build.yml）。
+         本地开发若执行过 `vcpkg integrate install`，zlib.lib 已在全局库路径中，ZlibLibDir 留空即可。 -->
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -46,8 +46,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <AdditionalDependencies>zlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <!-- /clr 工程下 vcpkg 不注入 LIBPATH，手动指向仓库根 vcpkg_installed（含两层 triplet 目录） -->
-      <AdditionalLibraryDirectories>$(ProjectDir)..\vcpkg_installed\x64-windows\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- CI 传入的 zlib 库目录；本地若 vcpkg integrate install 则留空也能找到 -->
+      <AdditionalLibraryDirectories>$(ZlibLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PreBuildEvent>
       <Command>cmake -D VERSION_FILE=..\VERSION -P ..\cmake\generate_version.cmake</Command>
