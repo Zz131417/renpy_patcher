@@ -1,0 +1,37 @@
+# 构建产物
+build/
+out/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+
+# 运行时产物（测试用，二进制不入库）
+*.rpa
+tests/sample_game.rpa
+tests/sample_game_patched.rpa
+tests/sample_game_patched/
+tests/real_out/
+tests/patched_out/
+tests/out/
+tests/out2/
+
+# 图片二进制（由 gen_demo_assets.py 生成，按需本地生成）
+tests/sample_game/game/images/*.png
+tests/mod_hanzi/images/*.png
+
+# 编辑器
+.vs/
+.vscode/
+*.user
+core/version.h
+patcher.log
+
+# GUI (Visual Studio / C++/CLI) 构建产物
+gui/x64/
+gui/Debug/
+gui/Release/
+*.suo
+*.sdf
+ipch/

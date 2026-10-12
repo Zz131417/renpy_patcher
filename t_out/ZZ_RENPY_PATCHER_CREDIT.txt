@@ -1,0 +1,16 @@
+==============================================================
+ Ren'Py Patcher - Injection / Translation Credit
+==============================================================
+本游戏内容由 Ren'Py Patcher 开源项目注入 / 汉化。
+This game content was injected / translated by Ren'Py Patcher (open-source).
+
+项目 / Project  : Ren'Py Patcher
+地址 / URL       : https://github.com/Zz131417/renpy_patcher
+版本 / Version   : 0.1.4
+许可证 / License : Non-Commercial License (commercial use prohibited)
+目标游戏 / Game  : tests/sample_game.rpa
+生成时间 / Time   : 2026-10-12 10:25:16
+
+Ren'Py Patcher 是一个面向 Ren'Py 游戏的非商业汉化 / Mod 补丁工具。
+Ren'Py Patcher is a non-commercial translation/mod patching tool for Ren'Py games.
+==============================================================
