@@ -78,10 +78,10 @@ jobs:
       - name: Setup MSVC + .NET
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install zlib via vcpkg (manifest mode)
+      - name: Install zlib via vcpkg
         run: |
-          # 仓库根有 vcpkg.json（manifest 模式）。无需 `vcpkg integrate install`：
-          # CI 无管理员权限，且 /clr 工程不会自动注入库搜索路径。
+          # 仓库根有 vcpkg.json。CI runner 上 vcpkg 走经典模式，把 zlib 装到
+          # $VCPKG_INSTALLATION_ROOT/packages；无需 `vcpkg integrate install`（无管理员权限）。
           vcpkg install --triplet x64-windows
 
       - name: Generate core/version.h
@@ -89,11 +89,15 @@ jobs:
 
       - name: Build GUI (patcher_gui)
         run: |
-          # 动态定位 zlib.lib，传给 /clr 工程的 ZlibLibDir（vcpkg 不会为 /clr 自动注入 LIBPATH）
-          $zlib = (Get-ChildItem -Recurse vcpkg_installed -Filter zlib.lib | Select-Object -First 1).DirectoryName
-          if (-not $zlib) { Write-Error "未找到 zlib.lib"; exit 1 }
-          Write-Host "zlib lib dir: $zlib"
-          msbuild gui/patcher_gui.vcxproj /p:Configuration=Release /p:Platform=x64 /p:ZlibLibDir="$zlib"
+          # 动态定位 zlib 的 include 与 lib 目录（经典模式装到 $VCPKG_INSTALLATION_ROOT/packages），
+          # 优先取非 debug 的 lib。两个目录作为全局属性传给 msbuild（一并传给被引用的 renpy_core）。
+          $inc = (Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT/packages" -Filter zlib.h -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName
+          $lib = (Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT/packages" -Filter zlib.lib -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -notmatch '\\debug\\' } | Select-Object -First 1).DirectoryName
+          if (-not $inc) { Write-Error "未找到 zlib.h"; exit 1 }
+          if (-not $lib) { Write-Error "未找到 zlib.lib"; exit 1 }
+          Write-Host "zlib include: $inc"
+          Write-Host "zlib lib:     $lib"
+          msbuild gui/patcher_gui.vcxproj /p:Configuration=Release /p:Platform=x64 /p:ZlibIncludeDir="$inc" /p:ZlibLibDir="$lib"
 
       - name: Package GUI
         run: |

@@ -29,16 +29,15 @@
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>false</WholeProgramOptimization>
-    <!-- 注意：/clr 工程下 vcpkg 的 manifest 自动注入不可靠，zlib 库路径由 CI 通过
-         /p:ZlibLibDir=... 传入（见 .github/workflows/build.yml）。
-         本地开发若执行过 `vcpkg integrate install`，zlib.lib 已在全局库路径中，ZlibLibDir 留空即可。 -->
+    <!-- zlib 库/头路径由 CI 通过 /p:ZlibLibDir=... /p:ZlibIncludeDir=... 传入
+         （经典模式 vcpkg 不会为 /clr 工程自动注入 LIBPATH/include） -->
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
 
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ZlibIncludeDir);..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;RP_NO_HOT_INJECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>Level3</WarningLevel>
       <TreatWarningAsError>false</TreatWarningAsError>

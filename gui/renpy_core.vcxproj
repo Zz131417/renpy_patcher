@@ -26,9 +26,7 @@
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
     <UseOfMfc>false</UseOfMfc>
-    <!-- vcpkg manifest 模式：自动注入 zlib.h 的 include 路径 -->
-    <VcpkgEnableManifest>true</VcpkgEnableManifest>
-    <VcpkgTriplet>x64-windows</VcpkgTriplet>
+    <!-- zlib 头路径由 CI 通过 /p:ZlibIncludeDir=... 传入（经典模式 vcpkg 不自动注入 include） -->
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -37,7 +35,7 @@
     <ClCompile>
       <!-- 纯 C 编译（不带 /clr），使用 C11 标准以容纳指定初始化器/复合字面量 -->
       <LanguageStandard_C>stdc11</LanguageStandard_C>
-      <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ZlibIncludeDir);..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;RP_NO_HOT_INJECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>Level3</WarningLevel>
       <TreatWarningAsError>false</TreatWarningAsError>
