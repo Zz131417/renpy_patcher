@@ -380,17 +380,19 @@ void MainForm::ReportFail(String^ op, int rc)
     AppendLog(msg);
 }
 
-bool MainForm::CheckFile(String^ tb, String^ label)
+bool MainForm::CheckFile(TextBox^ tb, String^ label)
 {
-    if (String::IsNullOrWhiteSpace(tb)) { AppendLog(L"[" + label + L"] 路径为空"); return false; }
-    if (!System::IO::File::Exists(tb))  { AppendLog(L"[" + label + L"] 文件不存在: " + tb); return false; }
+    String^ t = (tb != nullptr) ? tb->Text : nullptr;
+    if (String::IsNullOrWhiteSpace(t)) { AppendLog(L"[" + label + L"] 路径为空"); return false; }
+    if (!System::IO::File::Exists(t))  { AppendLog(L"[" + label + L"] 文件不存在: " + t); return false; }
     return true;
 }
 
-bool MainForm::CheckDir(String^ tb, String^ label)
+bool MainForm::CheckDir(TextBox^ tb, String^ label)
 {
-    if (String::IsNullOrWhiteSpace(tb))       { AppendLog(L"[" + label + L"] 路径为空"); return false; }
-    if (!System::IO::Directory::Exists(tb))   { AppendLog(L"[" + label + L"] 目录不存在: " + tb); return false; }
+    String^ t = (tb != nullptr) ? tb->Text : nullptr;
+    if (String::IsNullOrWhiteSpace(t))      { AppendLog(L"[" + label + L"] 路径为空"); return false; }
+    if (!System::IO::Directory::Exists(t))   { AppendLog(L"[" + label + L"] 目录不存在: " + t); return false; }
     return true;
 }
 

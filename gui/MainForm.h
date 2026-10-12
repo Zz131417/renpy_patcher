@@ -105,8 +105,8 @@ private:
     // ---- 报错显示 / 防崩溃 辅助 ----
     void SyncLog();
     void ReportFail(String^ op, int rc);
-    bool CheckFile(String^ tb, String^ label);
-    bool CheckDir(String^ tb, String^ label);
+    bool CheckFile(TextBox^ tb, String^ label);
+    bool CheckDir(TextBox^ tb, String^ label);
 };
 
 } // namespace RenPyPatcherGUI
