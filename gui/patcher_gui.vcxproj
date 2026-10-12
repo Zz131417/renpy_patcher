@@ -51,6 +51,14 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
 
+  <ItemGroup Label="References">
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- C++/CLI GUI 源 -->
     <ClCompile Include="Program.cpp" />
