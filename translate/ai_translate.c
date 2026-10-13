@@ -3,18 +3,19 @@
  * 用系统 curl 调用 HTTP API（CI 与大多数环境自带 curl，避免引入 C 网络库）。
  * 单批提交多条文本，要求模型以 JSON 数组返回译文，降低调用次数。
  */
-#define _POSIX_C_SOURCE 200809L
-#define _POSIX_C_SOURCE 200809L
 #include "translate/ai_translate.h"
 #include "util/log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #endif
 
 static long mypid(void) {
@@ -24,14 +25,6 @@ static long mypid(void) {
     return (long)getpid();
 #endif
 }
-#include <unistd.h>
-
-#ifndef _WIN32
-#include <sys/stat.h>
-#include <sys/types.h>
-#else
-#include <windows.h>
-#endif
 
 /* 读取文件全部内容到 malloc 缓冲（末尾补 \0），返回长度；失败返回 -1 */
 static long read_file(const char *path, char **buf) {
