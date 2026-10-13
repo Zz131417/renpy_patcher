@@ -1,12 +1,28 @@
 name: Build & Package
 
-# 触发：推送到 main、打 v* 标签、对 main 的 PR
+# 触发：
+#   - push 到 main / v* 标签：仅做构建验证（CI）
+#   - 对 main 的 PR：构建验证
+#   - workflow_dispatch（手动「Run workflow」）：直接编译并发布 Release
+#     注：tag 仅作为「定期备份」用途（push v* 标签会跑构建验证，但不会自动发版）；
+#          发版统一走手动一键，不再依赖 tag。
 on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release 使用的 tag 名（留空则自动用 build-<时间>）。注意：此 tag 与「备份用 v* tag」相互独立'
+        required: false
+        default: ''
+      prerelease:
+        description: '是否标记为预发布'
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: write   # 发布 Release 需要
@@ -76,11 +92,22 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Release on tag
+    name: Release (手动一键编译发布)
     needs: [ build ]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # 仅在手动 workflow_dispatch 时发版；push / PR 只做构建验证，不会自动发版
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
+      - name: 计算 Release tag
+        id: meta
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=build-$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -91,7 +118,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.tag }}
           files: artifacts/**/*.zip
           draft: false
-          prerelease: true        # 当前为测试版，默认标记为预发布
+          prerelease: ${{ github.event.inputs.prerelease }}
           generate_release_notes: true
