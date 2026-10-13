@@ -128,8 +128,8 @@ jobs:
           if (-not $wix) { $wix = Get-ChildItem "C:\Program Files" -Directory -Filter "WiX Toolset*" | Select-Object -First 1 }
           $env:PATH += ";$($wix.FullName)\bin"
           New-Item -ItemType Directory -Force obj | Out-Null
-          heat dir ../../installer_deploy -gg -sfrag -sreg -scom -suid -srd -cg DeployFiles -dr INSTALLFOLDER -arch x64 -out files.wxs
-          candle -arch x64 "-dVersion=$ver" -ext WixUIExtension product.wxs files.wxs -o obj/
+          heat dir ../../installer_deploy -gg -sfrag -sreg -scom -suid -srd -cg DeployFiles -dr INSTALLFOLDER -var var.DeploySource -arch x64 -out files.wxs
+          candle -arch x64 "-dVersion=$ver" "-dDeploySource=../../installer_deploy" -ext WixUIExtension product.wxs files.wxs -o obj/
           light -ext WixUIExtension obj/product.wixobj obj/files.wixobj -o ../patcher-gui-windows-x64.msi
           Pop-Location
           Get-ChildItem patcher-gui-windows-x64.msi
