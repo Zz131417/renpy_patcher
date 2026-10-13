@@ -461,7 +461,7 @@ void MainForm::btnTransAI_Click(Object^, EventArgs^)
         int dot = csv->LastIndexOf(L'.');
         String^ outJson = (dot >= 0) ? csv->Substring(0, dot) + L"_translated.json" : csv + L"_translated.json";
         std::string inPath  = ToUtf8(csv);
-        std::string outPath = ToUtf8(outCsv);
+        std::string outPath = ToUtf8(outJson);
         std::string base  = ToUtf8(txtAiBase->Text->Trim());
         std::string key   = ToUtf8(txtAiKey->Text->Trim());
         std::string model = ToUtf8(txtAiModel->Text->Trim());

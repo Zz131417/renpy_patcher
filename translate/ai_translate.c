@@ -26,6 +26,14 @@ static long mypid(void) {
 #endif
 }
 
+#ifdef _WIN32
+#define RP_POPEN _popen
+#define RP_PCLOSE _pclose
+#else
+#define RP_POPEN popen
+#define RP_PCLOSE pclose
+#endif
+
 /* 读取文件全部内容到 malloc 缓冲（末尾补 \0），返回长度；失败返回 -1 */
 static long read_file(const char *path, char **buf) {
     FILE *f = fopen(path, "rb");
@@ -85,9 +93,9 @@ static char *curl_post(const char *url, const char *body, const char *api_key) {
         "-H \"%s\" -H \"%s\" -H \"%s\" --data-binary @\"%s\" 2>/dev/null",
         resp_path, url, hdr_auth, hdr_ct, hdr_ver, req_path);
 
-    FILE *pf = popen(cmd, "r");
+    FILE *pf = RP_POPEN(cmd, "r");
     char code[16] = {0};
-    if (pf) { fgets(code, sizeof(code), pf); pclose(pf); }
+    if (pf) { fgets(code, sizeof(code), pf); RP_PCLOSE(pf); }
     remove(req_path);
 
     char *resp = NULL;
