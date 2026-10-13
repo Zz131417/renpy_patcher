@@ -39,3 +39,9 @@ ipch/
 # zlib（源码内置）本地构建缓存
 third_party/zlib/build/
 third_party/zlib/*.o
+
+# WiX / MSI 构建临时产物
+installer_deploy/
+gui/installer/obj/
+gui/installer/files.wxs
+*.msi

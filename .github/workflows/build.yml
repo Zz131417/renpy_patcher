@@ -75,6 +75,40 @@ jobs:
           7z a ../../${{ matrix.asset_gui }}.zip patcher_gui.exe
           cd ../..
 
+      # ---- 生成 MSI 安装包（仅 Windows GUI） ----
+      - name: 准备安装目录（复制 exe + VC++ 运行库）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $deploy = "installer_deploy"
+          New-Item -ItemType Directory -Force $deploy | Out-Null
+          Copy-Item build/Release/patcher_gui.exe $deploy/
+          if (Test-Path build/Release/agent.dll) { Copy-Item build/Release/agent.dll $deploy/ }
+          # 复制 VC++ 2022 x64 运行库，使目标机无需额外安装 VC++ 可再发行组件
+          $crt = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC" -Recurse -Directory -Filter "Microsoft.VC143.CRT" |
+                 Where-Object { $_.FullName -like '*x64*' } | Select-Object -First 1
+          if ($crt) { Copy-Item "$crt\*" $deploy\ }
+          else { Write-Warning "未找到 VC++ CRT 目录，跳过（目标机可能已安装 VC++ 2022 可再发行）" }
+          Get-ChildItem $deploy
+
+      - name: 安装 WiX Toolset
+        if: runner.os == 'Windows'
+        run: choco install wixtoolset --no-progress -y
+
+      - name: 生成 MSI 安装包
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ver = (Get-Content VERSION).Trim()
+          Push-Location gui/installer
+          $wix = Get-ChildItem "C:\Program Files (x86)" -Directory -Filter "WiX Toolset*" | Select-Object -First 1
+          $env:PATH += ";$($wix.FullName)\bin"
+          heat dir ../../installer_deploy -gg -sfrag -sreg -scom -suid -srd -cg DeployFiles -dr INSTALLFOLDER -arch x64 -out files.wxs
+          candle -arch x64 -dVersion=$ver -ext WixUIExtension product.wxs files.wxs -o obj/
+          light -ext WixUIExtension obj/product.wixobj obj/files.wixobj -o ../patcher-gui-windows-x64.msi
+          Pop-Location
+          Get-ChildItem patcher-gui-windows-x64.msi
+
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
@@ -88,6 +122,13 @@ jobs:
         with:
           name: ${{ matrix.asset_gui }}
           path: ${{ matrix.asset_gui }}.zip
+          if-no-files-found: error
+      - name: Upload MSI artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: patcher-gui-windows-x64-msi
+          path: patcher-gui-windows-x64.msi
           if-no-files-found: error
 
   release:
@@ -141,7 +182,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          files: artifacts/**/*.zip
+          files: artifacts/**/*
           draft: false
           prerelease: ${{ steps.meta.outputs.prerelease }}
           body_path: release_notes.md
