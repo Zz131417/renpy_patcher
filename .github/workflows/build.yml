@@ -114,12 +114,22 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $ver = (Get-Content VERSION).Trim()
+          # 版本号：优先读仓库根 VERSION，兜底用 git 描述
+          $root = (Get-Location).Path
+          $verFile = Join-Path $root "VERSION"
+          if (Test-Path $verFile) { $ver = (Get-Content $verFile -Raw).Trim() } else { $ver = $null }
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = (git describe --tags --always).Trim() }
+          # 规范成 x.y.z（去掉可能的 v 前缀）
+          $ver = $ver.TrimStart('v')
+          if ($ver -notmatch '^\d+\.\d+\.\d') { $ver = "1.0.0" }
+          Write-Host "打包版本号: $ver"
           Push-Location gui/installer
           $wix = Get-ChildItem "C:\Program Files (x86)" -Directory -Filter "WiX Toolset*" | Select-Object -First 1
+          if (-not $wix) { $wix = Get-ChildItem "C:\Program Files" -Directory -Filter "WiX Toolset*" | Select-Object -First 1 }
           $env:PATH += ";$($wix.FullName)\bin"
+          New-Item -ItemType Directory -Force obj | Out-Null
           heat dir ../../installer_deploy -gg -sfrag -sreg -scom -suid -srd -cg DeployFiles -dr INSTALLFOLDER -arch x64 -out files.wxs
-          candle -arch x64 -dVersion=$ver -ext WixUIExtension product.wxs files.wxs -o obj/
+          candle -arch x64 "-dVersion=$ver" -ext WixUIExtension product.wxs files.wxs -o obj/
           light -ext WixUIExtension obj/product.wixobj obj/files.wixobj -o ../patcher-gui-windows-x64.msi
           Pop-Location
           Get-ChildItem patcher-gui-windows-x64.msi
