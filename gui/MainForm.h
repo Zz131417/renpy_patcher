@@ -15,6 +15,7 @@
 #include "inject/export/export_module.h"
 #include "translate/rpy_dialog.h"
 #include "translate/ai_translate.h"
+#include "translate/json_io.h"
 
 namespace RenPyPatcherGUI {
 
