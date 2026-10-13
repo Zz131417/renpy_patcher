@@ -9,7 +9,7 @@
            Version="$(var.Version)"
            Manufacturer="RenPyPatcher"
            UpgradeCode="A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D"
-           Codepage="65001">
+           Codepage="936">
     <Package InstallerVersion="500" Platform="x64" Compressed="yes" InstallScope="perMachine" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Ren'Py Patcher is already installed." />
     <MediaTemplate EmbedCab="yes" />
