@@ -32,6 +32,7 @@
 #include "rpa/rpa_v3.h"
 #include "util/credit.h"
 #include "inject/export/export_module.h"
+#include "translate/translate_cli.h"
 #include "util/log.h"
 #include <stdio.h>
 #include <string.h>
@@ -234,6 +235,7 @@ int main(int argc, char **argv) {
     if (!strcmp(cmd, "game"))      return cmd_game(sub_argc, sub_argv);
     if (!strcmp(cmd, "credit"))    return cmd_credit(sub_argc, sub_argv);
     if (!strcmp(cmd, "export"))    return export_run(sub_argc, sub_argv);
+    if (!strcmp(cmd, "translate")) return cmd_translate(sub_argc, sub_argv);
 
     usage(prog);
     return 1;

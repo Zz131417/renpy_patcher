@@ -7,7 +7,7 @@
 
 面向 Ren'Py 游戏（Galgame / 视觉小说）的**汉化与 Mod 补丁工具**。
 
-纯 C 核心引擎负责资源包（RPA）的解析与重写，配合统一模块契约，可扩展支持多种注入方式、翻译流水线与压缩导出。当前已具备「解包 → 重打包 → 直接注入 → 热注入（Windows）」完整链路，并提供与 CLI 功能对齐的 Windows GUI。
+纯 C 核心引擎负责资源包（RPA）的解析与重写，配合统一模块契约，可扩展支持多种注入方式、翻译流水线与压缩导出；当前已内置对话翻译流水线（extract → ai/human → build mod）。当前已具备「解包 → 重打包 → 直接注入 → 热注入（Windows）」完整链路，并提供与 CLI 功能对齐的 Windows GUI。
 
 ## 特性
 - **RPA-3.0 双向闭环**：解包与重打包字节级兼容 Ren'Py 引擎（索引写在数据之后，头部记录索引偏移）。
@@ -182,6 +182,33 @@ patcher export <dir> -o patch.zip -split 100M  # 分卷：生成 .z01 .z02 ... .
 - 底层为自研 `util/zip`（仅依赖 zlib，无第三方库），与项目零运行时依赖理念一致。
 
 
+## 翻译流水线（M8 / 对话翻译）
+
+把游戏对话提取出来统一翻译，再生成 Ren'Py 翻译 mod（无需手工改每个脚本）。流程：
+
+```bash
+# 1) 解包游戏后，提取全部对话到 JSON（含说话人/原文）
+patcher translate extract <解包目录> -o dialogs.json
+
+# 2) 二选一填充译文：
+#    a) AI 翻译：调用 OpenAI 兼容接口批量翻译（需 RP_AI_API_KEY）
+#       RP_AI_API_KEY=sk-xxx patcher translate ai dialogs.json -o dialogs_t.json \
+#           [--ai-base https://api.openai.com/v1] [--ai-model gpt-4o-mini] [--to Chinese]
+#    b) 人工翻译：直接编辑 dialogs.json 里每行的 "target" 字段
+#
+# 3) 生成翻译 mod（tl/<lang>/*.rpy）
+patcher translate human dialogs_t.json --lang zh -o translation_mod
+
+# 4) 注入游戏：把 translation_mod 当普通 mod 直接注入
+patcher build <游戏.rpa|别名> -m translation_mod -o patched.rpa
+```
+
+要点：
+- 中间格式为 **JSON**（`file/line/speaker/source/target`），规避 CSV 引号与换行的转义坑。
+- 仅提取 **对话**（say）：说话人+文本、裸对话、多行三引号均可；菜单选项、界面显示语句、赋值与结构行已自动跳过。
+- 菜单、界面文本翻译在后续版本补齐（按"对话优先"路线）。
+- Ren'Py 会优先加载 `tl/<lang>/` 下的译文覆盖原文，无需重排索引。
+
 ## GUI 版（Windows / .NET WinForms）
 
 除命令行外，本项目另提供 **GUI 版**（仅 Windows，C++/CLI + .NET WinForms），与 CLI **功能完全对齐**，共用同一套核心 C 实现（同一个 `renpy_core` 静态库）：
@@ -236,7 +263,7 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 | M5 | 导出 / 分卷（标准 zip，自研 util/zip） | ✅ 完成 |
 | GUI | Windows GUI 版（C++/CLI WinForms，与 CLI 功能对齐，CMake 统一构建，防崩溃 + 报错显示） | ✅ 完成（v1.0.0） |
 | M7 | 外部插件 DLL 自动加载（注册表入口已预留） | 🔲 未实现 |
-| M8 | 翻译流水线 | 🔲 未实现 |
+| M8 | 翻译流水线（对话翻译；菜单/界面文本待补） | ✅ 完成（v1.1.0） |
 | M9 | APK 支持 | 🔲 暂搁置 |
 
 ## 许可证

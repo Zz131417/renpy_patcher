@@ -122,6 +122,32 @@ jobs:
         with:
           path: artifacts
 
+      - name: Checkout (读取 CHANGELOG 作为发布说明)
+        uses: actions/checkout@v4
+
+      - name: 提取本版更新说明（不指向提交记录）
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo "body<<RELEnd"
+            python3 - <<'PY'
+          import re
+          try:
+              s = open('CHANGELOG.md', encoding='utf-8').read()
+          except Exception as e:
+              print("CHANGELOG 读取失败: %s" % e)
+              raise SystemExit(0)
+          # 取首个版本块（## vX.Y.Z 到下一个 ## 或文件尾）
+          m = re.search(r'## (v[0-9][^\n]*)(.*?)(\n## |\Z)', s, re.S)
+          if m:
+              print("## " + m.group(1) + m.group(2).rstrip())
+          else:
+              print(s.strip())
+          PY
+            echo "RELEnd"
+          } >> "$GITHUB_OUTPUT"
+
       - name: List artifacts
         run: ls -R artifacts
 
@@ -132,4 +158,4 @@ jobs:
           files: artifacts/**/*.zip
           draft: false
           prerelease: ${{ steps.meta.outputs.prerelease }}
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}

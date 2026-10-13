@@ -13,6 +13,8 @@
 #include "util/log.h"
 #include "inject/direct/direct_inject.h"
 #include "inject/export/export_module.h"
+#include "translate/rpy_dialog.h"
+#include "translate/ai_translate.h"
 
 namespace RenPyPatcherGUI {
 
@@ -23,7 +25,7 @@ using namespace System::Drawing;
 using namespace msclr::interop;
 
 /// <summary>
-/// 主窗体：提供游戏管理、解包、注入、来源声明、导出等 GUI 操作。
+/// 主窗体：提供游戏管理、解包、注入、来源声明、导出、翻译等 GUI 操作。
 /// 功能与 CLI 一一对应，共用核心 C 实现。
 /// </summary>
 public ref class MainForm : public Form
@@ -72,6 +74,19 @@ private:
     TextBox^  txtSplit;
     Button^   btnExport;
 
+    // ---- 翻译流水线 ----
+    TextBox^  txtTransDir;     // 解包目录 / 游戏别名
+    Button^   btnBrowseTransDir;
+    TextBox^  txtTransCsv;     // CSV 文件（提取结果 / 待翻译 / 译文）
+    Button^   btnBrowseTransCsv;
+    TextBox^  txtTransLang;    // 目标语言代码（默认 zh）
+    TextBox^  txtAiBase;      // AI base url（可空，用默认）
+    TextBox^  txtAiKey;       // AI api key
+    TextBox^  txtAiModel;     // AI 模型名
+    Button^   btnTransExtract;
+    Button^   btnTransAI;
+    Button^   btnTransBuild;
+
     // ---- 日志 ----
     TextBox^  txtLog;
     Button^   btnClearLog;
@@ -101,6 +116,11 @@ private:
     void btnBrowseCreditOut_Click(Object^, EventArgs^);
     void btnBrowseExportDir_Click(Object^, EventArgs^);
     void btnBrowseExportOut_Click(Object^, EventArgs^);
+    void btnBrowseTransDir_Click(Object^, EventArgs^);
+    void btnBrowseTransCsv_Click(Object^, EventArgs^);
+    void btnTransExtract_Click(Object^, EventArgs^);
+    void btnTransAI_Click(Object^, EventArgs^);
+    void btnTransBuild_Click(Object^, EventArgs^);
 
     // ---- 报错显示 / 防崩溃 辅助 ----
     void SyncLog();

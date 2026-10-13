@@ -2,6 +2,23 @@
 
 > 版本号格式 `X.Y.Z`。**正式版**从 `v1.0.0` 起标记发布；此前 `v0.1.x` 系列为预发布（非正式）版本，仅供先行体验与反馈。
 
+## v1.1.0
+
+新增 **翻译流水线（M8）**：提取游戏对话 → 批量翻译 → 回填生成 Ren'Py 翻译 mod，再用 `build` 注入游戏。
+
+### 新增
+- **CLI `translate` 子命令**（中间交换格式为 JSON，规避 CSV 引号/换行转义坑）：
+  - `translate extract <解包目录> -o dialogs.json`：递归提取所有 `.rpy` 的 **对话**（说话人+文本 / 裸对话 / 多行三引号），跳过菜单选项、界面显示语句、赋值与结构行
+  - `translate ai <dialogs.json> -o out.json`：调用 **OpenAI 兼容 Chat Completions** 批量翻译（默认目标中文）；需 `RP_AI_API_KEY`，支持 `--ai-base/--ai-key/--ai-model` 或环境变量指定任意兼容服务（DeepSeek / 通义 / 本地 llama.cpp 等）；原文写 `source`、译文写 `target`
+  - `translate human <dialogs.json> --lang zh -o mod_dir` / `translate build ...`：把有译文的条目生成 Ren'Py 翻译 mod（`tl/<lang>/*.rpy`，`old "原文"` / `new "译文"`）
+- **Windows GUI**：新增「翻译流水线」分组，三个按钮一一对应 CLI 的 extract / ai / build（AI Key/Base/Model 可填）
+- **人工翻译**也支持：直接编辑 `dialogs.json` 的 `target` 字段即可，不强制走 AI
+
+### 说明
+- 第一版只做 **对话翻译**（按需求"对话成功后再做界面/菜单"）；菜单、界面文本翻译后续版本补齐
+- 热注入仍为代码完成待 Windows 实测
+
+
 ## v1.0.0（正式版）
 
 首个稳定发布版。在预发布系列已完成全部核心能力并验证 GUI 稳定性后，定为正式版。

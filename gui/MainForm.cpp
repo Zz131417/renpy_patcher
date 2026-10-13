@@ -51,7 +51,7 @@ static int __cdecl GameListCallback(const game_entry_t *g, void *ud) {
 MainForm::MainForm()
 {
     this->Text = gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING);
-    this->ClientSize = Drawing::Size(760, 720);
+    this->ClientSize = Drawing::Size(760, 740);
     this->StartPosition = FormStartPosition::CenterScreen;
 
     log_init("patcher.log");
@@ -153,6 +153,32 @@ MainForm::MainForm()
     btnExport->Click += gcnew EventHandler(this, &MainForm::btnExport_Click);
 
     y += 76;
+
+    // ============ 翻译流水线 ============
+    GroupBox^ gbT = gcnew GroupBox();
+    gbT->Text = L"翻译流水线 (Translate：提取对话 → AI翻译 → 生成翻译mod)";
+    gbT->Location = Drawing::Point(12, y); gbT->Size = Drawing::Size(736, 130);
+    txtTransDir = gcnew TextBox();    txtTransDir->Location = Drawing::Point(12, 22);  txtTransDir->Size = Drawing::Size(280, 23);
+    btnBrowseTransDir = gcnew Button(); btnBrowseTransDir->Location = Drawing::Point(297, 20); btnBrowseTransDir->Size = Drawing::Size(60, 25); btnBrowseTransDir->Text = L"浏览";
+    txtTransCsv = gcnew TextBox();    txtTransCsv->Location = Drawing::Point(362, 22); txtTransCsv->Size = Drawing::Size(248, 23);
+    btnBrowseTransCsv = gcnew Button(); btnBrowseTransCsv->Location = Drawing::Point(615, 20); btnBrowseTransCsv->Size = Drawing::Size(60, 25); btnBrowseTransCsv->Text = L"浏览";
+    txtTransLang = gcnew TextBox();   txtTransLang->Location = Drawing::Point(12, 52); txtTransLang->Size = Drawing::Size(60, 23); txtTransLang->Text = L"zh";
+    txtAiBase = gcnew TextBox();      txtAiBase->Location = Drawing::Point(78, 52); txtAiBase->Size = Drawing::Size(200, 23); txtAiBase->Text = L"https://api.openai.com/v1";
+    txtAiKey = gcnew TextBox();       txtAiKey->Location = Drawing::Point(284, 52); txtAiKey->Size = Drawing::Size(180, 23);
+    txtAiModel = gcnew TextBox();     txtAiModel->Location = Drawing::Point(470, 52); txtAiModel->Size = Drawing::Size(120, 23); txtAiModel->Text = L"gpt-4o-mini";
+    btnTransExtract = gcnew Button(); btnTransExtract->Location = Drawing::Point(12, 84); btnTransExtract->Size = Drawing::Size(110, 25); btnTransExtract->Text = L"提取对话";
+    btnTransAI = gcnew Button();      btnTransAI->Location = Drawing::Point(128, 84); btnTransAI->Size = Drawing::Size(110, 25); btnTransAI->Text = L"AI翻译";
+    btnTransBuild = gcnew Button();   btnTransBuild->Location = Drawing::Point(244, 84); btnTransBuild->Size = Drawing::Size(130, 25); btnTransBuild->Text = L"生成翻译mod";
+    gbT->Controls->AddRange(gcnew array<Control^>{ txtTransDir, btnBrowseTransDir, txtTransCsv, btnBrowseTransCsv,
+        txtTransLang, txtAiBase, txtAiKey, txtAiModel, btnTransExtract, btnTransAI, btnTransBuild });
+    this->Controls->Add(gbT);
+    btnBrowseTransDir->Click += gcnew EventHandler(this, &MainForm::btnBrowseTransDir_Click);
+    btnBrowseTransCsv->Click  += gcnew EventHandler(this, &MainForm::btnBrowseTransCsv_Click);
+    btnTransExtract->Click    += gcnew EventHandler(this, &MainForm::btnTransExtract_Click);
+    btnTransAI->Click         += gcnew EventHandler(this, &MainForm::btnTransAI_Click);
+    btnTransBuild->Click      += gcnew EventHandler(this, &MainForm::btnTransBuild_Click);
+
+    y += 142;
 
     // ============ 日志 ============
     GroupBox^ gbLog = gcnew GroupBox();
@@ -394,6 +420,104 @@ bool MainForm::CheckDir(TextBox^ tb, String^ label)
     if (String::IsNullOrWhiteSpace(t))      { AppendLog(L"[" + label + L"] 路径为空"); return false; }
     if (!System::IO::Directory::Exists(t))   { AppendLog(L"[" + label + L"] 目录不存在: " + t); return false; }
     return true;
+}
+
+// ---- 翻译流水线 ----
+
+void MainForm::btnBrowseTransDir_Click(Object^, EventArgs^) { BrowseFolder(txtTransDir); }
+void MainForm::btnBrowseTransCsv_Click(Object^, EventArgs^)
+{
+    BrowseFile(txtTransCsv, L"JSON 文件 (*.json)|*.json|所有文件 (*.*)|*.*");
+}
+
+void MainForm::btnTransExtract_Click(Object^, EventArgs^)
+{
+    try {
+        if (!CheckDir(txtTransDir, L"翻译-解包目录")) return;
+        String^ csv = txtTransCsv->Text->Trim();
+        if (String::IsNullOrWhiteSpace(csv)) { AppendLog(L"[翻译] 请先填写 JSON 输出路径"); return; }
+        std::string dir  = ToUtf8(txtTransDir->Text->Trim());
+        std::string out  = ToUtf8(csv);
+        dialog_entry_t *arr = NULL; size_t cnt = 0;
+        AppendLog(L"[翻译] 提取对话: " + csv);
+        int rc = extract_dialogs(dir.c_str(), &arr, &cnt);
+        if (rc == RP_OK) {
+            rc = write_dialogs_json(arr, cnt, out.c_str());
+            if (rc == RP_OK) AppendLog(String::Format(L"[翻译] 提取完成 ✅ 共 {0} 条 -> {1}", (int)cnt, csv));
+            else ReportFail(L"翻译-导出CSV", rc);
+        } else ReportFail(L"翻译-提取", rc);
+        if (arr) free_dialog_entries(arr, cnt);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
+}
+
+void MainForm::btnTransAI_Click(Object^, EventArgs^)
+{
+    try {
+        if (!CheckFile(txtTransCsv, L"翻译-CSV")) return;
+        String^ csv = txtTransCsv->Text->Trim();
+        int dot = csv->LastIndexOf(L'.');
+        String^ outJson = (dot >= 0) ? csv->Substring(0, dot) + L"_translated.json" : csv + L"_translated.json";
+        std::string inPath  = ToUtf8(csv);
+        std::string outPath = ToUtf8(outCsv);
+        std::string base  = ToUtf8(txtAiBase->Text->Trim());
+        std::string key   = ToUtf8(txtAiKey->Text->Trim());
+        std::string model = ToUtf8(txtAiModel->Text->Trim());
+        dialog_entry_t *arr = NULL; size_t cnt = 0;
+        AppendLog(L"[翻译] AI 翻译开始: " + csv);
+        int rc = read_dialogs_json(inPath.c_str(), &arr, &cnt);
+        if (rc != RP_OK) { ReportFail(L"翻译-读JSON", rc); return; }
+        const char **srcs = new const char*[cnt];
+        char **tgts = new char*[cnt];
+        for (size_t i = 0; i < cnt; i++) { srcs[i] = arr[i].source; tgts[i] = NULL; }
+        rc = ai_translate_batch(srcs, tgts, cnt, "auto", "Chinese",
+                                base.empty() ? NULL : base.c_str(),
+                                key.empty() ? NULL : key.c_str(),
+                                model.empty() ? NULL : model.c_str());
+        if (rc == RP_OK) {
+            for (size_t i = 0; i < cnt; i++) {
+                if (tgts[i] && *tgts[i]) { free(arr[i].target); arr[i].target = tgts[i]; }
+                else free(tgts[i]);
+            }
+            write_dialogs_json(arr, cnt, outPath.c_str());
+            AppendLog(L"[翻译] AI 翻译完成 ✅ -> " + outJson);
+            txtTransCsv->Text = outJson;   // 便于下一步直接「生成翻译mod」
+        } else ReportFail(L"翻译-AI", rc);
+        delete[] srcs; delete[] tgts;
+        if (arr) free_dialog_entries(arr, cnt);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
+}
+
+void MainForm::btnTransBuild_Click(Object^, EventArgs^)
+{
+    try {
+        if (!CheckFile(txtTransCsv, L"翻译-CSV")) return;
+        String^ csv  = txtTransCsv->Text->Trim();
+        String^ lang = txtTransLang->Text->Trim();
+        if (String::IsNullOrWhiteSpace(lang)) lang = L"zh";
+        int sp = csv->LastIndexOf(L"\\"); if (sp < 0) sp = csv->LastIndexOf(L"/");
+        String^ csvDir = (sp >= 0) ? csv->Substring(0, sp + 1) : L"";
+        String^ modDir = csvDir + L"translation_mod";
+        std::string inPath = ToUtf8(csv);
+        std::string mdir   = ToUtf8(modDir);
+        std::string lang8  = ToUtf8(lang);
+        dialog_entry_t *arr = NULL; size_t cnt = 0;
+        AppendLog(L"[翻译] 生成翻译 mod: " + modDir);
+        int rc = read_dialogs_json(inPath.c_str(), &arr, &cnt);
+        if (rc != RP_OK) { ReportFail(L"翻译-读JSON", rc); return; }
+        rc = build_translation_mod(arr, cnt, mdir.c_str(), lang8.c_str());
+        if (rc == RP_OK) AppendLog(String::Format(L"[翻译] 生成翻译 mod 完成 ✅ -> {0}tl/{1}/", modDir, lang));
+        else ReportFail(L"翻译-生成mod", rc);
+        if (arr) free_dialog_entries(arr, cnt);
+    }
+    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
+    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
+    SyncLog();
 }
 
 } // namespace RenPyPatcherGUI

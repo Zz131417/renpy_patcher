@@ -34,7 +34,7 @@ A pure-C core engine parses and rewrites the resource archives (RPA), and — to
 ---
 
 ## Why this exists
-Ren'Py ships game assets inside `.rpa` archives. To translate or mod a game you normally need to unpack, edit, and repack those archives — and many existing tools are Python-only, slow on large games, or hard to embed. Ren'Py Patcher is a **small, dependency-light C engine** that does the RPA surgery correctly (byte-for-byte compatible with the Ren'Py loader) and exposes a clean module contract so new capabilities plug in without forking the core.
+Ren'Py ships game assets inside `.rpa` archives. To translate or mod a game you normally need to unpack, edit, and repack those archives — and many existing tools are Python-only, slow on large games, or hard to embed. Ren'Py Patcher is a **small, dependency-light C engine** that does the RPA surgery correctly (byte-for-byte compatible with the Ren'Py loader) and exposes a clean module contract so new capabilities plug in without forking the core. A dialog-translation pipeline (extract → ai/human → build mod) is built in.
 
 ## Features
 - **RPA-3.0 round-trip**: unpacking and repacking are byte-for-byte compatible with the Ren'Py engine (the index is stored *after* the data, and the header records the index offset).
@@ -311,7 +311,7 @@ To cut a release: open **Actions → Build & Package → Run workflow**.
 | M5 | Export / split (standard zip, in-house util/zip) | ✅ Done |
 | GUI | Windows GUI (C++/CLI WinForms, on par with CLI, CMake unified build, crash-proof + error display) | ✅ Done (v1.0.0) |
 | M7 | External plugin DLL auto-load (registry entry reserved) | 🔲 Not implemented |
-| M8 | Translation pipeline | 🔲 Not implemented |
+| M8 | Translation pipeline (dialog translation; menu/UI text pending) | ✅ Done (v1.1.0) |
 | M9 | APK support | 🔲 Deferred |
 
 ## Contributing (extending the engine)
