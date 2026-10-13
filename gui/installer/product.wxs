@@ -2,6 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <!-- Ren'Py Patcher GUI 安装包描述（WiX v3）
        版本号由 candle -dVersion=<VERSION> 注入；文件清单由 heat 自动生成（files.wxs）。 -->
+
   <Product Id="*"
            Name="Ren'Py Patcher GUI"
            Language="1033"
@@ -13,12 +14,12 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!-- .NET Framework 4.8 启动条件（Win10/11 自带，基本都满足） -->
-    <Property Id="NetFxRelease" Secure="yes">
+    <Property Id="NETFXRELEASE" Secure="yes">
       <RegistrySearch Id="NetFx48Search" Root="HKLM"
         Key="SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" Name="Release" Type="raw" />
     </Property>
     <Condition Message="需要 .NET Framework 4.8 或更高版本。请先安装后再运行本安装程序。">
-      <![CDATA[NetFxRelease >= 528040]]>
+      <![CDATA[NETFXRELEASE >= 528040]]>
     </Condition>
 
     <Feature Id="MainFeature" Title="Ren'Py Patcher GUI" Level="1">
@@ -26,28 +27,28 @@
       <ComponentRef Id="StartMenuShortcut" />
     </Feature>
 
-    <Fragment>
-      <Directory Id="TARGETDIR" Name="SourceDir">
-        <Directory Id="ProgramFiles64Folder">
-          <Directory Id="INSTALLFOLDER" Name="RenPyPatcher" />
-        </Directory>
-        <Directory Id="ProgramMenuFolder">
-          <Directory Id="AppStartMenuDir" Name="RenPyPatcher" />
-        </Directory>
-      </Directory>
-    </Fragment>
-
-    <Fragment>
-      <Component Id="StartMenuShortcut" Directory="AppStartMenuDir" Guid="B2C3D4E5-F6A7-4B8C-9D0E-1F2A3B4C5D6E">
-        <Shortcut Id="StartMenuSc" Name="Ren'Py Patcher" Description="Ren'Py Patcher GUI"
-                  Target="[INSTALLFOLDER]patcher_gui.exe" WorkingDirectory="INSTALLFOLDER" />
-        <RemoveFolder Id="CleanStartMenu" Directory="AppStartMenuDir" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\RenPyPatcher" Name="installed" Type="integer" Value="1" KeyPath="yes" />
-      </Component>
-    </Fragment>
-
     <UIRef Id="WixUI_InstallDir" />
     <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
   </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="RenPyPatcher" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="AppStartMenuDir" Name="RenPyPatcher" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="StartMenuShortcut" Directory="AppStartMenuDir" Guid="B2C3D4E5-F6A7-4B8C-9D0E-1F2A3B4C5D6E">
+      <Shortcut Id="StartMenuSc" Name="Ren'Py Patcher" Description="Ren'Py Patcher GUI"
+                Target="[INSTALLFOLDER]patcher_gui.exe" WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="CleanStartMenu" Directory="AppStartMenuDir" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\RenPyPatcher" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
 </Wix>
