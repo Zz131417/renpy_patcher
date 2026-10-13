@@ -1,11 +1,10 @@
 name: Build & Package
 
 # 触发：
-#   - push 到 main / v* 标签：仅做构建验证（CI）
-#   - 对 main 的 PR：构建验证
-#   - workflow_dispatch（手动「Run workflow」）：直接编译并发布 Release
-#     注：tag 仅作为「定期备份」用途（push v* 标签会跑构建验证，但不会自动发版）；
-#          发版统一走手动一键，不再依赖 tag。
+#   - push 到 main：自动编译并发布 Release（自动 tag：ci-<时间>-<sha7>，默认预发布）
+#   - workflow_dispatch（手动「Run workflow」）：也可手动一键发版（tag 可自定义，正式/预发布可选）
+#   - push v* 标签：仅做构建验证（tag 仅作「定期备份」用途，不触发发版）
+#   - 对 main 的 PR：仅构建验证
 on:
   push:
     branches: [ main ]
@@ -92,21 +91,32 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Release (手动一键编译发布)
+    name: Release (自动 / 手动编译发布)
     needs: [ build ]
-    # 仅在手动 workflow_dispatch 时发版；push / PR 只做构建验证，不会自动发版
-    if: github.event_name == 'workflow_dispatch'
+    # push 到 main 时自动发版；手动 workflow_dispatch 也可发版；PR / v* tag 只构建验证，不自动发版
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
-      - name: 计算 Release tag
+      - name: 计算 Release tag / 预发布
         id: meta
         shell: bash
         run: |
-          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+              TAG="${{ github.event.inputs.release_tag }}"
+            else
+              TAG="build-$(date +%Y%m%d-%H%M%S)"
+            fi
+            PRERE="${{ github.event.inputs.prerelease }}"
           else
-            echo "tag=build-$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+            # push main 自动发版：自动 tag，默认预发布（自动构建产物）
+            TAG="ci-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+            PRERE="true"
           fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERE" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
@@ -121,5 +131,5 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           files: artifacts/**/*.zip
           draft: false
-          prerelease: ${{ github.event.inputs.prerelease }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
           generate_release_notes: true
