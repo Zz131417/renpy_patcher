@@ -12,6 +12,7 @@
   - `translate ai <dialogs.json> -o out.json`：调用 **OpenAI 兼容 Chat Completions** 批量翻译（默认目标中文）；需 `RP_AI_API_KEY`，支持 `--ai-base/--ai-key/--ai-model` 或环境变量指定任意兼容服务（DeepSeek / 通义 / 本地 llama.cpp 等）；原文写 `source`、译文写 `target`
   - `translate human <dialogs.json> --lang zh -o mod_dir` / `translate build ...`：把有译文的条目生成 Ren'Py 翻译 mod（`tl/<lang>/*.rpy`，`old "原文"` / `new "译文"`）
 - **Windows GUI**：新增「翻译流水线」分组，三个按钮一一对应 CLI 的 extract / ai / build（AI Key/Base/Model 可填）
+- **Windows GUI 模块化重构**：改为左侧导航栏 + 三个页面（游戏管理 / 首页 / 设置）。AI 翻译配置移到「设置」页；「首页」提供快速上手指引与版本信息；「游戏管理」承载解包 / 注入 / 来源声明 / 导出 / 翻译 / 日志等全部操作
 - **人工翻译**也支持：直接编辑 `dialogs.json` 的 `target` 字段即可，不强制走 AI
 
 ### 说明

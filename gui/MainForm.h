@@ -2,6 +2,9 @@
 
 // C++/CLI (.NET) WinForms GUI for Ren'Py Patcher
 // 仅 Windows 平台；底层复用同一套核心 C 库（核心 .c 直接编入本工程）。
+//
+// 布局为模块化：左侧导航栏 + 右侧页面容器，三个页面：
+//   游戏管理 / 首页 / 设置。各页内容独立，互不干扰，便于后续扩展。
 
 #include <msclr/marshal_cppstd.h>
 #include <msclr/gcroot.h>
@@ -25,8 +28,13 @@ using namespace System::IO;
 using namespace System::Drawing;
 using namespace msclr::interop;
 
+/* 页面索引 */
+static const int PAGE_GAME     = 0;   // 游戏管理
+static const int PAGE_HOME     = 1;   // 首页
+static const int PAGE_SETTINGS = 2;   // 设置
+
 /// <summary>
-/// 主窗体：提供游戏管理、解包、注入、来源声明、导出、翻译等 GUI 操作。
+/// 主窗体：模块化导航布局，提供游戏管理/首页/设置三个页面。
 /// 功能与 CLI 一一对应，共用核心 C 实现。
 /// </summary>
 public ref class MainForm : public Form
@@ -35,7 +43,18 @@ public:
     MainForm();
 
 private:
-    // ---- 游戏管理 ----
+    // ---- 导航栏 ----
+    Panel^   navBar;
+    Button^  btnNavGame;
+    Button^  btnNavHome;
+    Button^  btnNavSettings;
+
+    // ---- 三个页面容器 ----
+    Panel^   pnlGame;      // 游戏管理（所有实际操作）
+    Panel^   pnlHome;      // 首页（概览 / 使用指引）
+    Panel^   pnlSettings;  // 设置（AI 配置 / 关于）
+
+    // ---- 游戏管理页：游戏管理 ----
     TextBox^  txtAlias;
     TextBox^  txtGamePath;
     Button^   btnBrowseGame;
@@ -44,14 +63,14 @@ private:
     Button^   btnRefreshGames;
     ListBox^  lstGames;
 
-    // ---- 解包 ----
+    // ---- 游戏管理页：解包 ----
     TextBox^  txtUnpackIn;
     Button^   btnBrowseUnpackIn;
     TextBox^  txtUnpackOut;
     Button^   btnBrowseUnpackOut;
     Button^   btnUnpack;
 
-    // ---- 注入（build） ----
+    // ---- 游戏管理页：注入（build） ----
     TextBox^  txtBuildIn;
     Button^   btnBrowseBuildIn;
     TextBox^  txtModDir;
@@ -60,14 +79,14 @@ private:
     Button^   btnBrowseBuildOut;
     Button^   btnBuild;
 
-    // ---- 来源声明 ----
+    // ---- 游戏管理页：来源声明 ----
     TextBox^  txtCreditIn;
     Button^   btnBrowseCreditIn;
     TextBox^  txtCreditOut;
     Button^   btnBrowseCreditOut;
     Button^   btnCredit;
 
-    // ---- 导出 ----
+    // ---- 游戏管理页：导出 ----
     TextBox^  txtExportDir;
     Button^   btnBrowseExportDir;
     TextBox^  txtExportOut;
@@ -75,22 +94,35 @@ private:
     TextBox^  txtSplit;
     Button^   btnExport;
 
-    // ---- 翻译流水线 ----
-    TextBox^  txtTransDir;     // 解包目录 / 游戏别名
+    // ---- 游戏管理页：翻译流水线 ----
+    TextBox^  txtTransDir;
     Button^   btnBrowseTransDir;
-    TextBox^  txtTransCsv;     // CSV 文件（提取结果 / 待翻译 / 译文）
+    TextBox^  txtTransCsv;
     Button^   btnBrowseTransCsv;
-    TextBox^  txtTransLang;    // 目标语言代码（默认 zh）
-    TextBox^  txtAiBase;      // AI base url（可空，用默认）
-    TextBox^  txtAiKey;       // AI api key
-    TextBox^  txtAiModel;     // AI 模型名
+    TextBox^  txtTransLang;
     Button^   btnTransExtract;
     Button^   btnTransAI;
     Button^   btnTransBuild;
 
-    // ---- 日志 ----
+    // ---- 游戏管理页：日志 ----
     TextBox^  txtLog;
     Button^   btnClearLog;
+
+    // ---- 设置页：AI 配置 ----
+    TextBox^  txtAiBase;
+    TextBox^  txtAiKey;
+    TextBox^  txtAiModel;
+
+    // ---- 首页 / 设置 的展示控件 ----
+    TextBox^  txtHomeGuide;
+    Label^    lblAbout;
+
+    // ---- 页面构建 / 切换 ----
+    void BuildNav();
+    void BuildHome();
+    void BuildGame();
+    void BuildSettings();
+    void ShowPage(int idx);
 
     // ---- 辅助 ----
     void AppendLog(String^ msg);
@@ -98,7 +130,12 @@ private:
     void BrowseFile(TextBox^ tb, String^ filter);
     void BrowseFolder(TextBox^ tb);
 
-    // ---- 事件 ----
+    // ---- 导航事件 ----
+    void btnNavGame_Click(Object^, EventArgs^);
+    void btnNavHome_Click(Object^, EventArgs^);
+    void btnNavSettings_Click(Object^, EventArgs^);
+
+    // ---- 游戏管理事件 ----
     void btnAddGame_Click(Object^, EventArgs^);
     void btnRemoveGame_Click(Object^, EventArgs^);
     void btnRefreshGames_Click(Object^, EventArgs^);
