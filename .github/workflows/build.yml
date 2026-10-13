@@ -118,14 +118,14 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERE" >> "$GITHUB_OUTPUT"
 
+      # 先 checkout 拿到 CHANGELOG（此时还没有 artifacts，clean 不会误删任何东西）
+      - name: Checkout (读取 CHANGELOG 作为发布说明)
+        uses: actions/checkout@v4
+
+      # 再下载产物，确保 artifacts 在 checkout 之后写入、不会被清理
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: Checkout (读取 CHANGELOG 作为发布说明)
-        uses: actions/checkout@v4
-        with:
-          clean: false   # 不清理工作区，避免删掉上面下载的 artifacts 目录
 
       - name: 提取本版更新说明（不指向提交记录，取自 CHANGELOG 首个版本块）
         id: notes
