@@ -131,6 +131,7 @@ jobs:
           heat dir ../../installer_deploy -gg -sfrag -sreg -scom -suid -srd -cg DeployFiles -dr INSTALLFOLDER -var var.DeploySource -arch x64 -out files.wxs
           candle -arch x64 "-dVersion=$ver" "-dDeploySource=../../installer_deploy" -ext WixUIExtension product.wxs files.wxs -o obj/
           light -ext WixUIExtension obj/product.wixobj obj/files.wixobj -o ../patcher-gui-windows-x64.msi
+          if (\$LASTEXITCODE -ne 0) { throw "light 失败，退出码 $LASTEXITCODE" }
           Pop-Location
           Get-ChildItem patcher-gui-windows-x64.msi
 
