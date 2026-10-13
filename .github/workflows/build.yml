@@ -124,6 +124,8 @@ jobs:
 
       - name: Checkout (读取 CHANGELOG 作为发布说明)
         uses: actions/checkout@v4
+        with:
+          clean: false   # 不清理工作区，避免删掉上面下载的 artifacts 目录
 
       - name: 提取本版更新说明（不指向提交记录，取自 CHANGELOG 首个版本块）
         id: notes
