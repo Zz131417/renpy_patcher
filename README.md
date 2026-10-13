@@ -3,39 +3,43 @@
 > 🌐 English documentation: [README.en.md](README.en.md)
 
 > 📄 **许可证**：本项目采用**非商业许可证**（详见 `LICENSE`）。个人学习、研究、非商业用途可自由使用与修改；**禁止任何商业用途**，商业使用需单独书面授权。
-> ⚠️ **测试版（test-v0.1）**：核心引擎（解包 / 重打包 / 直接注入）已完成并自测通过；热注入与 GUI 尚待实测，API 与文件结构未来可能调整，请勿用于生产环境。
+> ✅ **当前版本 v1.0.0（正式版）**：核心引擎（解包 / 重打包 / 直接注入 / 导出）与 Windows GUI 均已稳定可用。详见 [CHANGELOG.md](CHANGELOG.md)。
 
 面向 Ren'Py 游戏（Galgame / 视觉小说）的**汉化与 Mod 补丁工具**。
 
-纯 C 核心引擎负责资源包（RPA）的解析与重写，配合统一模块契约，可扩展支持多种注入方式、翻译流水线与压缩导出。当前已具备「解包 → 重打包 → 直接注入 → 热注入（Windows）」完整链路。
+纯 C 核心引擎负责资源包（RPA）的解析与重写，配合统一模块契约，可扩展支持多种注入方式、翻译流水线与压缩导出。当前已具备「解包 → 重打包 → 直接注入 → 热注入（Windows）」完整链路，并提供与 CLI 功能对齐的 Windows GUI。
 
 ## 特性
 - **RPA-3.0 双向闭环**：解包与重打包字节级兼容 Ren'Py 引擎（索引写在数据之后，头部记录索引偏移）。
 - **直接注入**：把汉化/Mod 资源合并进游戏包后重打包，产出可被真实游戏直接读取的补丁。
 - **热注入（Windows）**：运行时向游戏进程注入 DLL，定位 CPython、激活游戏内 Python 加载 `mod_main.py`，零改文件。
 - **可扩展架构**：统一模块注册表（`core/plugin_loader`），新能力（压缩导出 / 翻译后端 / 外部插件）即插即用。
+- **Windows GUI**：C++/CLI + .NET WinForms，复用同一核心库，功能与 CLI 对齐；操作前校验输入、失败在日志框显示「错误码 + 中文含义 + 底层详情」、全局 `try/catch` 防崩溃。
 
 ## 技术栈
 | 层面 | 选型 |
 | --- | --- |
 | 核心语言 | **C11**（纯 C，无 C++ / 外部运行时依赖） |
-| 压缩 | **zlib**（RPA 内嵌 deflate；自研 `zlib_wrap` 封装 inflate/deflate） |
+| 压缩 | **zlib**（RPA 内嵌 deflate；自研 `zlib_wrap` 封装 inflate/deflate），源码内置 `third_party/zlib` |
 | 序列化 | 自研 **pickle_min**：解析 CPython 协议 2/3/4 的 `pickle`，用于读取与重写 Ren'Py 索引 |
 | 资源格式 | **RPA-3.0**：头部 `RPA-3.0` + 8 字节索引偏移 + 4 字节 XOR prefix；索引（pickle）位于数据段之后 |
-| 构建系统 | **CMake ≥ 3.16**（core 静态库 + `patcher` 可执行 + `agent` DLL）；Windows 走 **vcpkg** 提供 zlib |
-| 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译，打 `v*` 标签自动发布预发布 Release |
+| 构建系统 | **CMake ≥ 3.17**（核心静态库 `renpy_core` + CLI `patcher` 可执行 + Windows GUI `patcher_gui`）；zlib 源码内置，无 vcpkg / 系统 zlib |
+| 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译；发版走手动 `workflow_dispatch` 一键编译发布，`v*` 标签仅作定期备份 |
 | 热注入（Windows） | DLL 注入（`CreateRemoteThread` + `LoadLibrary`）+ **CPython C-API** 桥（`py_bridge.c` 定位宿主解释器并执行 `mod_main.py`） |
 | 扩展机制 | 统一模块契约（`core/plugin.h`）+ 中央注册表（`core/plugin_loader`） |
 
 ## 项目目录
 ```
 .
-├── CMakeLists.txt            # 构建定义：core 静态库 + patcher 可执行 + agent DLL
-├── vcpkg.json               # Windows 依赖清单（zlib，manifest 模式自动拉取）
+├── CMakeLists.txt            # 构建定义：renpy_core 静态库 + patcher 可执行 + patcher_gui（Windows GUI）
+├── VERSION                   # 版本号（语义化版本，单一事实来源）
+├── CHANGELOG.md              # 更新日志
 ├── LICENSE                  # 非商业许可证（禁止商业使用）
 ├── DESIGN.md                # 架构设计与里程碑说明
 ├── .github/workflows/
-│   └── build.yml            # CI：Linux/Windows 编译 + 打 tag 自动发 Release
+│   └── build.yml            # CI：Linux/Windows 编译；手动 workflow_dispatch 一键编译发布
+├── third_party/
+│   └── zlib/                # 内置 zlib 源码（add_subdirectory 构建，无需 vcpkg / 系统 zlib / 联网）
 ├── core/                    # 统一模块契约与注册表
 │   ├── plugin.h             #   模块接口 / 结构体定义
 │   └── plugin_loader.c/.h   #   中央注册表（查找 / 注册 / 扩展入口）
@@ -60,6 +64,9 @@
 │       ├── agent.c/.h       #   被注入的 DLL 载荷
 │       ├── inject_api.c     #   热注入入口（非 Windows 为 stub）
 │       └── py_bridge.c/.h   #   定位宿主 CPython 并执行 mod_main.py
+├── gui/                     # Windows GUI（C++/CLI + .NET WinForms，复用 renpy_core）
+│   ├── Program.cpp          #   托管入口 main()
+│   ├── MainForm.h/.cpp      #   主窗口与事件（含 try/catch 防崩溃、报错显示）
 ├── cli/
 │   └── main.c               # 命令行入口（子命令分发）
 └── tests/                   # 演示游戏 + 汉化 mod + 验证脚本
@@ -74,24 +81,27 @@
 ## 架构（统一模块契约）
 - 所有能力实现 `core/plugin.h` 定义的统一接口，启动时向 `core/plugin_loader` 中央注册表登记。
 - CLI（`cli/main.c`）解析子命令后，从注册表查找对应模块并调用。
+- GUI（`gui/MainForm.cpp`）复用同一静态库 `renpy_core`，通过 C 接口调用，与 CLI 共享全部能力。
 - 新能力（压缩导出 / 翻译后端 / 外部插件 DLL）只需实现契约并注册即可接入，无需改动核心。
 
 ## 构建
-需要系统 `zlib`（Windows 用 vcpkg 提供）。
 
-版本号由根目录 `VERSION` 文件统一管理（语义化版本，如 `0.1.0`），CMake 会据此生成
-`core/version.h` 并嵌入 git 短提交信息；`patcher --version` 可查看。打发布 tag 时
-版本号与 git tag（`vX.Y.Z`）保持一致。
+zlib 以源码形式内置在 `third_party/zlib`，由 CMake `add_subdirectory` 自动构建，**无需系统 zlib / vcpkg / 联网**。
+
+版本号由根目录 `VERSION` 文件统一管理（语义化版本，如 `1.0.0`），CMake 会据此生成
+`core/version.h` 并嵌入 git 短提交信息；`patcher --version` 可查看。
 
 ```bash
-cmake -B build -S .
-cmake --build build
-# 或单文件 gcc（需先由 CMake 生成 core/version.h）：
-gcc -std=c11 -O2 -I. core/plugin_loader.c util/*.c compress/*.c rpa/*.c mod/*.c \
-    inject/direct/*.c inject/hot/inject_api.c cli/main.c -lz -o build/patcher
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+# 产物：build/patcher（Linux），build/Release/patcher.exe + patcher_gui.exe（Windows）
 ```
 
-Windows 下 CMake 通过 vcpkg toolchain 自动拉取 zlib，并额外产出 `agent.dll`（热注入载荷）。
+> 注：CLI 也可用单文件 gcc 直接编（仍需先由 CMake 生成 `core/version.h`，且链接系统 `-lz`）：
+> ```bash
+> gcc -std=c11 -O2 -I. core/plugin_loader.c util/*.c compress/*.c rpa/*.c mod/*.c \
+>     inject/direct/*.c inject/hot/inject_api.c cli/main.c -lz -o build/patcher
+> ```
 
 ## 用法
 ```bash
@@ -181,8 +191,14 @@ patcher export <dir> -o patch.zip -split 100M  # 分卷：生成 .z01 .z02 ... .
 
 GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源码形式内置在 `third_party/zlib`，**无需 vcpkg / 系统 zlib / 联网**。
 
-### 构建 GUI（Windows）
+### 稳定性（v1.0.0 重点）
+- **报错显示**：操作失败时，日志框显示「错误码 + 中文含义 + 底层详情」，例如
+  `[解包] 失败：错误码 2 (I/O 错误（文件打开/读取/写入失败）) | 详情: 无法打开文件 xxx`。
+- **防崩溃**：所有按钮事件均包 `try/catch`（含底层异常兜底），遇到异常只写日志不弹系统报错窗。
+- **输入校验**：执行前先检查文件/目录是否存在，避免无效调用。
+- **日志同步**：日志框增量同步 `patcher.log`，启动即载入历史记录。
 
+### 构建 GUI（Windows）
 1. 安装 Visual Studio 2019/2022（「使用 C++ 的桌面开发」+「C++/CLI 支持」+「.NET Framework 4.8 开发工具」）。
 2. 用 CMake 配置并构建（自动产出 `patcher_gui.exe`，同时构建 CLI 与内置 zlib）：
    ```bash
@@ -197,17 +213,18 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 
 ## 版本管理
 
-- **单一事实来源**：根目录 `VERSION` 文件（语义化版本，如 `0.1.0`）。
-- **自动生成**：CMake 读取 `VERSION` 并捕获 git 短提交，生成 `core/version.h`（`#include` 进 `core/plugin.h`），无需手工改版本号。
+- **单一事实来源**：根目录 `VERSION` 文件（语义化版本，如 `1.0.0`）。
+- **自动生成**：CMake 读取 `VERSION` 并捕获 git 短提交，生成 `core/version.h`（被 `core/plugin.h` 包含），无需手工改版本号。
 - **查看版本**：`patcher --version`（或 `-v`）打印版本号、构建来源 commit 与许可证。
-- **发布约定**：升级版本时先改 `VERSION`，再打对应 git tag `vX.Y.Z`；CI 在推送 `v*` tag 时自动发布预发布 Release。
+- **发版方式**：在 GitHub Actions 页面 **手动 Run workflow（workflow_dispatch）** 一键编译并发布 Release；发版 tag 默认自动用 `build-<时间>`，也可手动指定。
+  - `v*` 标签**仅作定期备份**用途：推 `v*` 标签只跑构建验证，不会自动发版。
 - `core/version.h` 为生成文件，已被 `.gitignore` 忽略，请勿手工提交。
 
 
 ## 测试
 见 [`tests/README_test.md`](tests/README_test.md)：包含可直接用 Ren'Py SDK 实测的演示游戏、汉化 mod，以及用 Ren'Py loader 逻辑校验产物的脚本。
 
-本仓库已配置 CI（`build.yml`），推送 `main` 自动编译、打 `v*` 标签自动发布预发布 Release 并附各平台产物。
+本仓库已配置 CI（`build.yml`）：推送 `main` 自动编译验证；正式发版走手动 `workflow_dispatch` 一键编译发布并附各平台产物。
 
 ## 进度 / 路线图
 | 里程碑 | 内容 | 状态 |
@@ -215,10 +232,9 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 | M1 | RPA-3.0 解包 | ✅ 完成 |
 | M2 | 原样重打包闭环 | ✅ 完成 |
 | M3 | 直接注入（合并 mod → 重打包） | ✅ 完成 |
-| M4 | 热注入代码（Windows 进程注入 + CPython 桥） | 🔲 待 Windows 实测 |
+| M4 | 热注入代码（Windows 进程注入 + CPython 桥） | ✅ 代码完成（待 Windows 实机验证） |
 | M5 | 导出 / 分卷（标准 zip，自研 util/zip） | ✅ 完成 |
-| GUI | Windows GUI 版（C++/CLI WinForms，与 CLI 功能对齐，CMake 统一构建） | ✅ 完成 |
-| M6 | GUI（C# 壳，引用 core 静态库） | 🔲 未实现 |
+| GUI | Windows GUI 版（C++/CLI WinForms，与 CLI 功能对齐，CMake 统一构建，防崩溃 + 报错显示） | ✅ 完成（v1.0.0） |
 | M7 | 外部插件 DLL 自动加载（注册表入口已预留） | 🔲 未实现 |
 | M8 | 翻译流水线 | 🔲 未实现 |
 | M9 | APK 支持 | 🔲 暂搁置 |

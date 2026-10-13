@@ -2,11 +2,11 @@
 
 > 🌐 中文文档：[README.md](README.md)
 > 📄 **License**: This project is released under a **Non-Commercial License** (see [`LICENSE`](LICENSE)). Personal study, research, and non-commercial use are allowed; **commercial use is prohibited** and requires a separate written license.
-> ⚠️ **Beta (test-v0.1)**: The core engine (unpack / repack / direct injection) is complete and self-tested. Hot injection and the GUI still need real-world testing; the API and file layout may change — do not use in production.
+> ✅ **Current version v1.0.0 (stable)**: the core engine (unpack / repack / direct injection / export) and the Windows GUI are both stable. See [CHANGELOG.md](CHANGELOG.md).
 
 A **translation / mod patching tool** for Ren'Py games (Galgames / visual novels).
 
-A pure-C core engine parses and rewrites the resource archives (RPA), and — together with a unified module contract — can be extended to support multiple injection methods, translation pipelines, and compressed export. The full chain "unpack → repack → direct injection → hot injection (Windows)" is already in place.
+A pure-C core engine parses and rewrites the resource archives (RPA), and — together with a unified module contract — can be extended to support multiple injection methods, translation pipelines, and compressed export. The full chain "unpack → repack → direct injection → hot injection (Windows)" is in place, with a Windows GUI that mirrors the CLI feature-for-feature.
 
 ---
 
@@ -21,15 +21,7 @@ A pure-C core engine parses and rewrites the resource archives (RPA), and — to
 - [Project Layout](#project-layout)
 - [Architecture (Unified Module Contract)](#architecture-unified-module-contract)
 - [Build](#build)
-  - [Prerequisites](#prerequisites)
-  - [Linux / macOS](#linux--macos)
-  - [Windows (vcpkg + MSVC)](#windows-vcpkg--msvc)
-  - [Single-file gcc build](#single-file-gcc-build)
 - [Usage](#usage)
-  - [unpack](#unpack)
-  - [repack](#repack)
-  - [build (direct injection)](#build-direct-injection)
-  - [hotinject](#hotinject)
 - [Authoring a mod](#authoring-a-mod)
 - [Testing](#testing)
 - [CI / Release](#ci--release)
@@ -49,6 +41,7 @@ Ren'Py ships game assets inside `.rpa` archives. To translate or mod a game you 
 - **Direct injection**: merge translation/mod resources into the game archive and repack, producing a patch that a real game can read directly.
 - **Hot injection (Windows)**: inject a DLL into the running game process at runtime, locate CPython, and activate the game's in-process Python to load `mod_main.py` — zero file modification.
 - **Extensible architecture**: a unified module registry (`core/plugin_loader`) lets new capabilities (compressed export / translation backends / external plugins) be plugged in with no core changes.
+- **Windows GUI**: C++/CLI + .NET WinForms reusing the same core library, on par with the CLI; validates input before running, shows "error code + meaning + detail" on failure, and wraps every handler in `try/catch` to avoid crashes.
 
 ## How it works
 
@@ -84,29 +77,32 @@ Instead of touching files on disk, `hotinject`:
 2. `agent.dll` walks the host process for the embedded CPython interpreter (`py_bridge.c`), grabs `PyImport_*` / `PyRun_*` function pointers, and executes the mod's `mod_main.py` inside the live interpreter.
 3. The mod runs in-process, with full access to the game's own modules and state — no repack needed.
 
-> Status: the hot-injection code is written and compiles, but **has not been tested against a live Ren'Py build on Windows yet**. Treat M4 as "code complete, unverified."
+> Status: the hot-injection code is written and compiles, but has **not been verified against a live Ren'Py build on Windows yet**. Treat M4 as "code complete, unverified."
 
 ## Tech Stack
 | Layer | Choice |
 | --- | --- |
 | Core language | **C11** (pure C, no C++ / no external runtime dependency) |
-| Compression | **zlib** (RPA-embedded deflate; in-house `zlib_wrap` wraps inflate/deflate) |
+| Compression | **zlib** (RPA-embedded deflate; in-house `zlib_wrap` wraps inflate/deflate), vendored as source under `third_party/zlib` |
 | Serialization | in-house **pickle_min**: parses CPython protocol 2/3/4 `pickle`, used to read & rewrite the Ren'Py index |
 | Archive format | **RPA-3.0**: header `RPA-3.0` + 8-byte index offset + 4-byte XOR prefix; the index (pickle) lives after the data segment |
-| Build system | **CMake ≥ 3.16** (core static lib + `patcher` executable + `agent` DLL); Windows uses **vcpkg** to provide zlib |
-| CI | **GitHub Actions**: Ubuntu (gcc) / Windows (MSVC) dual-matrix build; pushing `v*` tags auto-publishes a pre-release |
+| Build system | **CMake ≥ 3.17** (core static lib `renpy_core` + CLI `patcher` exe + Windows GUI `patcher_gui`); zlib is vendored, no vcpkg / system zlib |
+| CI | **GitHub Actions**: Ubuntu (gcc) / Windows (MSVC) dual-matrix build; release is a manual `workflow_dispatch` one-click build, `v*` tags are for periodic backup only |
 | Hot injection (Windows) | DLL injection (`CreateRemoteThread` + `LoadLibrary`) + **CPython C-API** bridge (`py_bridge.c` locates the host interpreter and runs `mod_main.py`) |
 | Extension mechanism | unified module contract (`core/plugin.h`) + central registry (`core/plugin_loader`) |
 
 ## Project Layout
 ```
 .
-├── CMakeLists.txt            # Build: core static lib + patcher exe + agent DLL
-├── vcpkg.json               # Windows dependency manifest (zlib, auto-fetched in manifest mode)
+├── CMakeLists.txt            # Build: renpy_core static lib + patcher exe + patcher_gui (Windows GUI)
+├── VERSION                   # Version (semver, single source of truth)
+├── CHANGELOG.md              # Changelog
 ├── LICENSE                  # Non-Commercial License (commercial use prohibited)
 ├── DESIGN.md                # Architecture design & milestone notes
 ├── .github/workflows/
-│   └── build.yml            # CI: Linux/Windows build + tag-triggered Release
+│   └── build.yml            # CI: Linux/Windows build; manual workflow_dispatch releases
+├── third_party/
+│   └── zlib/                # Vendored zlib source (add_subdirectory, no vcpkg / system zlib / network)
 ├── core/                    # Unified module contract & registry
 │   ├── plugin.h             #   module interface / struct definitions
 │   └── plugin_loader.c/.h   #   central registry (lookup / register / extension entry)
@@ -131,6 +127,9 @@ Instead of touching files on disk, `hotinject`:
 │       ├── agent.c/.h       #   injected DLL payload
 │       ├── inject_api.c     #   hot-inject entry (stub on non-Windows)
 │       └── py_bridge.c/.h   #   locate host CPython & execute mod_main.py
+├── gui/                     # Windows GUI (C++/CLI + .NET WinForms, reuses renpy_core)
+│   ├── Program.cpp          #   managed entry main()
+│   └── MainForm.h/.cpp      #   main window & handlers (try/catch crash-proof, error display)
 ├── cli/
 │   └── main.c               # CLI entry (subcommand dispatch)
 └── tests/                   # Demo game + translation mod + verification scripts
@@ -145,46 +144,26 @@ Instead of touching files on disk, `hotinject`:
 ## Architecture (Unified Module Contract)
 - Every capability implements the unified interface defined in `core/plugin.h` and registers itself with the central registry `core/plugin_loader` at startup.
 - The CLI (`cli/main.c`) parses the subcommand, then looks up the matching module in the registry and invokes it.
+- The GUI (`gui/MainForm.cpp`) links the same static library `renpy_core` and drives it through the C interface, sharing all CLI capabilities.
 - New capabilities (compressed export / translation backend / external plugin DLL) only need to implement the contract and register — no core code changes required.
-
-This keeps the core tiny and stable while letting the surface area grow: a future GUI (C# shell) just links `core` and drives it through the same contract.
 
 ## Build
 
-### Prerequisites
-- A C11 compiler: **gcc/clang** (Linux/macOS) or **MSVC** (Windows, via Visual Studio Build Tools).
-- **CMake ≥ 3.16**.
-- **zlib**:
-  - Linux/macOS: system package (`zlib1g-dev` / `zlib`).
-  - Windows: provided automatically by **vcpkg** (see below) — you do not install it by hand.
+zlib is vendored as source under `third_party/zlib` and built via CMake `add_subdirectory` — **no system zlib / vcpkg / network** required.
 
-> **Versioning**: the version lives in the root `VERSION` file (semver, e.g. `0.1.0`). CMake reads it, captures the git short commit, and generates `core/version.h` (included from `core/plugin.h`). `patcher --version` prints it. When cutting a release, update `VERSION` and push a matching `vX.Y.Z` git tag.
+The version lives in the root `VERSION` file (semver, e.g. `1.0.0`). CMake reads it, captures the git short commit, and generates `core/version.h` (included from `core/plugin.h`). `patcher --version` prints it.
 
-### Linux / macOS
 ```bash
-cmake -B build -S .
-cmake --build build
-# produces: build/patcher
-```
-
-### Windows (vcpkg + MSVC)
-The repo ships `vcpkg.json` declaring `zlib`, so CMake's manifest mode fetches it:
-```powershell
-# run in "Developer Command Prompt for VS" or let setup-msbuild handle the toolchain
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release `
-  "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-# produces: build/Release/patcher.exe  and  build/Release/agent.dll
+# outputs: build/patcher (Linux), build/Release/patcher.exe + patcher_gui.exe (Windows)
 ```
-The Windows job in `.github/workflows/build.yml` does exactly this on `windows-latest`.
 
-### Single-file gcc build
-If you prefer not to use CMake:
-```bash
-gcc -std=c11 -O2 -I. core/plugin_loader.c util/*.c compress/*.c rpa/*.c mod/*.c \
-    inject/direct/*.c inject/hot/inject_api.c cli/main.c -lz -o build/patcher
-```
-(On non-Windows, `inject/hot/inject_api.c` compiles to a no-op stub.)
+> The CLI can also be built with a single-file gcc (still needs `core/version.h` generated by CMake first, and links system `-lz`):
+> ```bash
+> gcc -std=c11 -O2 -I. core/plugin_loader.c util/*.c compress/*.c rpa/*.c mod/*.c \
+>     inject/direct/*.c inject/hot/inject_api.c cli/main.c -lz -o build/patcher
+> ```
 
 ## Usage
 
@@ -198,25 +177,30 @@ patcher game list                                    # list registered
 patcher game show   <alias>                          # details (incl. file count)
 patcher game remove <alias>                          # unregister
 patcher game path   <alias>                          # print path only (for scripts)
-``` into `out_dir`, preserving the original directory structure (`images/logo.png` → `out_dir/images/logo.png`).
-
-### repack
-```bash
-patcher repack dir -o out.rpa
 ```
-Re-packs a directory tree back into a valid `.rpa`. Used to verify the round-trip is lossless.
 
-### build (direct injection)
+### resource operations
 ```bash
-patcher build game.rpa -m mod_dir -o patched.rpa
-```
-Unpacks `game.rpa`, merges `mod_dir` over it (new files added, same-named files overwritten), then repacks into `patched.rpa`. The output is directly loadable by the game.
+patcher unpack <game.rpa|alias> -o out_dir             # unpack
+patcher repack dir -o out.rpa                         # as-is repack
+patcher build  <game.rpa|alias> -m mod_dir -o patched.rpa  # direct injection (auto credit)
+patcher hotinject --pid <pid> --mod mod_dir          # hot injection (Windows)
 
-### hotinject
-```bash
-patcher hotinject --pid <pid> --mod mod_dir
+# source credit: mark an (already) injected/translated rpa as patched by Ren'Py Patcher
+patcher credit <game.rpa|alias> -o out.rpa            # add credit to an existing rpa
+patcher credit --text [--game <name>]                 # print credit text only
+
+# export: pack a directory (unpacked result / mod) into a standard zip for distribution
+patcher export <dir> -o patch.zip [-split 100M] [-store|-deflate]
 ```
-(Windows only.) Injects `agent.dll` into the process `<pid>` and runs `mod_dir/mod_main.py` inside the game's Python interpreter. No files are modified on disk.
+
+## Source Credit
+After you inject/translate a game, you can bake a "injected/translated by Ren'Py Patcher (open-source)" notice into the archive so players can trace the patch source:
+- **Automatic**: `patcher build` writes `ZZ_RENPY_PATCHER_CREDIT.txt` into the output rpa automatically.
+- **Manual**: for an existing/already-injected `.rpa`, `patcher credit <rpa> -o out.rpa` appends the notice (unpack -> add file -> repack).
+- **Text only**: `patcher credit --text [--game <name>]` prints the notice to stdout for copying elsewhere.
+
+The notice includes the project name, repo URL, version, the Non-Commercial License, and a timestamp (bilingual).
 
 ## Authoring a mod
 A mod is just a directory mirroring the game's `game/` layout:
@@ -242,67 +226,7 @@ See [`tests/README_test.md`](tests/README_test.md). The `tests/` directory ships
 
 You can run the demo end-to-end, then drop the produced `patched.rpa` into a real Ren'Py SDK game to confirm the Chinese text shows up.
 
-## Version Management
-
-- **Single source of truth**: the root `VERSION` file (semver, e.g. `0.1.0`).
-- **Auto-generated**: CMake parses `VERSION`, captures the git short commit, and writes `core/version.h` (pulled in by `core/plugin.h`) — no need to edit version macros by hand.
-- **Check version**: `patcher --version` (or `-v`) prints the version, the build commit, and the license.
-- **Release convention**: bump `VERSION`, then push a matching `vX.Y.Z` git tag; CI auto-publishes a pre-release on `v*` tags.
-- `core/version.h` is a generated file and is `.gitignore`d — do not commit it by hand.
-
-
-## Export (Distribute Patch)
-
-Pack an unpacked directory, a mod folder, etc. into a **standard `.zip`** so players can extract it without any RPA tool:
-
-```bash
-patcher export <dir> -o patch.zip             # deflate compression by default
-patcher export <dir> -o patch.zip -store       # store only, no compression
-patcher export <dir> -o patch.zip -split 100M  # volumes: .z01 .z02 ... .zip
-```
-
-Notes:
-- Output is a standard ZIP readable by OS extractors / Python `zipfile`.
-- `-split <size>` splits into fixed-size volumes (K/M/G); concatenate in order (`cat *.z* out.zip`) to restore.
-- Backed by in-house `util/zip` (zlib only, no third-party lib), consistent with the project's zero-runtime-dependency philosophy.
-
-
-## GUI Version (Windows / .NET WinForms)
-
-Besides the CLI, there is a **GUI version** (Windows only, C++/CLI + .NET WinForms) with **feature parity** to the CLI, sharing the same core C implementation (one `renpy_core` static library):
-
-- Game management: add / remove / list aliases
-- Unpack / Inject (build, auto credit) / Credit / Export (with split)
-
-The GUI, the core library and the CLI are all built from a single `CMakeLists.txt`. zlib is vendored as source under `third_party/zlib`, so **no vcpkg / system zlib / network** is required.
-
-### Build GUI (Windows)
-
-1. Install Visual Studio 2019/2022 ("Desktop development with C++" + "C++/CLI support" + ".NET Framework 4.8 development tools").
-2. Configure and build with CMake (this also builds the CLI and the bundled zlib, and emits `patcher_gui.exe`):
-   ```bash
-   cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-   cmake --build build --config Release
-   ```
-   Or just open the folder as a CMake project in Visual Studio.
-3. Output: `build/Release/patcher_gui.exe` (alongside `patcher.exe`).
-
-> Note: the GUI reuses the same core library. The hot-injection `agent.dll` is only built when a Python dev package is present; the GUI itself does not depend on Python.
-
-
-## Source Credit
-
-After you inject/translate a game, you can bake a "injected/translated by Ren'Py Patcher (open-source)" notice into the archive so players can trace the patch source:
-
-- **Automatic**: `patcher build` writes `ZZ_RENPY_PATCHER_CREDIT.txt` into the output rpa automatically.
-- **Manual**: for an existing/already-injected `.rpa`, `patcher credit <rpa> -o out.rpa` appends the notice (unpack -> add file -> repack).
-- **Text only**: `patcher credit --text [--game <name>]` prints the notice to stdout for copying elsewhere.
-
-The notice includes the project name, repo URL, version, the Non-Commercial License, and a timestamp (bilingual).
-
-
 ## Logging
-
 By default each run appends a log to **`patcher.log`** (with timestamp, level, and module tag), and also prints to stderr. Global options (placed before the subcommand) control this:
 
 | Global option | Effect |
@@ -315,35 +239,67 @@ By default each run appends a log to **`patcher.log`** (with timestamp, level, a
 Higher level = less output; `INFO` and above is the default. Logs include handler selection, unpack/inject progress, and error codes — handy for debugging.
 
 ## Game Management
-
 Register a `.rpa` path under an **alias**; afterwards `unpack` / `build` accept either the path or the alias:
-
 ```bash
 patcher game add   mygame /path/to/game.rpa "note"
 patcher unpack mygame -o out        # == unpack /path/to/game.rpa
 patcher build  mygame -m mod/ -o p.rpa       # direct inject (auto-adds credit)
-
-# source credit: mark an (already) injected/translated rpa as patched by Ren'Py Patcher
-patcher credit <game.rpa|alias> -o out.rpa            # add credit to an existing rpa
-patcher credit --text [--game <name>]                 # print credit text only
-
-# export: pack a directory (unpacked result / mod) into a standard zip for distribution
-patcher export <dir> -o patch.zip [-split 100M] [-store|-deflate]
 ```
-
 The registry is a plain-text file on disk (`$RENPY_PATCHER_HOME` or `~/.renpy_patcher/games.txt`; on Windows `%APPDATA%/renpy_patcher/games.txt`) — no database required.
 
+## Export (Distribute Patch)
+Pack an unpacked directory, a mod folder, etc. into a **standard `.zip`** so players can extract it without any RPA tool:
+```bash
+patcher export <dir> -o patch.zip             # deflate compression by default
+patcher export <dir> -o patch.zip -store       # store only, no compression
+patcher export <dir> -o patch.zip -split 100M  # volumes: .z01 .z02 ... .zip
+```
+Notes:
+- Output is a standard ZIP readable by OS extractors / Python `zipfile`.
+- `-split <size>` splits into fixed-size volumes (K/M/G); concatenate in order (`cat *.z* out.zip`) to restore.
+- Backed by in-house `util/zip` (zlib only, no third-party lib), consistent with the project's zero-runtime-dependency philosophy.
+
+## GUI Version (Windows / .NET WinForms)
+Besides the CLI, there is a **GUI version** (Windows only, C++/CLI + .NET WinForms) with **feature parity** to the CLI, sharing the same core C implementation (one `renpy_core` static library):
+- Game management: add / remove / list aliases
+- Unpack / Inject (build, auto credit) / Credit / Export (with split)
+
+The GUI, the core library and the CLI are all built from a single `CMakeLists.txt`. zlib is vendored as source under `third_party/zlib`, so **no vcpkg / system zlib / network** is required.
+
+### Stability (v1.0.0 focus)
+- **Error display**: on failure the log box shows "error code + meaning + detail", e.g.
+  `[Unpack] failed: error code 2 (I/O error) | detail: cannot open file xxx`.
+- **Crash-proof**: every button handler is wrapped in `try/catch` (with a low-level fallback); exceptions are logged, never pop a system error dialog.
+- **Input validation**: files/directories are checked for existence before running.
+- **Log sync**: the log box mirrors `patcher.log` incrementally and loads history on startup.
+
+### Build GUI (Windows)
+1. Install Visual Studio 2019/2022 ("Desktop development with C++" + "C++/CLI support" + ".NET Framework 4.8 development tools").
+2. Configure and build with CMake (this also builds the CLI and the bundled zlib, and emits `patcher_gui.exe`):
+   ```bash
+   cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+   cmake --build build --config Release
+   ```
+   Or just open the folder as a CMake project in Visual Studio.
+3. Output: `build/Release/patcher_gui.exe` (alongside `patcher.exe`).
+
+> Note: the GUI reuses the same core library. The hot-injection `agent.dll` is only built when a Python dev package is present; the GUI itself does not depend on Python.
+
+## Version Management
+- **Single source of truth**: the root `VERSION` file (semver, e.g. `1.0.0`).
+- **Auto-generated**: CMake parses `VERSION`, captures the git short commit, and writes `core/version.h` (pulled in by `core/plugin.h`) — no need to edit version macros by hand.
+- **Check version**: `patcher --version` (or `-v`) prints the version, the build commit, and the license.
+- **Release flow**: release is cut via the GitHub Actions **Run workflow (workflow_dispatch)** button — it builds and publishes a Release in one click; the release tag defaults to `build-<timestamp>` (can be set manually).
+  - `v*` tags are for **periodic backup** only: pushing a `v*` tag runs build verification but does **not** auto-publish a release.
+- `core/version.h` is a generated file and is `.gitignore`d — do not commit it by hand.
 
 ## CI / Release
 `.github/workflows/build.yml`:
-- Triggers on push to `main`, opening a PR against `main`, and pushing any `v*` tag.
+- Triggers on push to `main`, opening a PR against `main`, and pushing any `v*` tag (verification only).
 - Builds on **Ubuntu (gcc)** and **Windows (MSVC)**; packages each as a `.zip` artifact.
-- On a `v*` tag, auto-creates a **pre-release** (`prerelease: true`, because this is still beta) and attaches both platform zips.
+- A **release** is produced only by a manual `workflow_dispatch` run: it compiles and creates a Release (default `prerelease` can be toggled) attaching both platform zips.
 
-To cut a release:
-```bash
-git tag v0.1 && git push origin v0.1
-```
+To cut a release: open **Actions → Build & Package → Run workflow**.
 
 ## Progress / Roadmap
 | Milestone | Scope | Status |
@@ -351,10 +307,9 @@ git tag v0.1 && git push origin v0.1
 | M1 | RPA-3.0 unpack | ✅ Done |
 | M2 | As-is repack round-trip | ✅ Done |
 | M3 | Direct injection (merge mod → repack) | ✅ Done |
-| M4 | Hot injection (Windows process injection + CPython bridge) | 🔲 Needs Windows test |
+| M4 | Hot injection (Windows process injection + CPython bridge) | ✅ Code done (needs Windows test) |
 | M5 | Export / split (standard zip, in-house util/zip) | ✅ Done |
-| GUI | Windows GUI (C++/CLI WinForms, on par with CLI, CMake unified build) | ✅ Done |
-| M6 | GUI (C# shell referencing the core static lib) | 🔲 Not implemented |
+| GUI | Windows GUI (C++/CLI WinForms, on par with CLI, CMake unified build, crash-proof + error display) | ✅ Done (v1.0.0) |
 | M7 | External plugin DLL auto-load (registry entry reserved) | 🔲 Not implemented |
 | M8 | Translation pipeline | 🔲 Not implemented |
 | M9 | APK support | 🔲 Deferred |
@@ -367,8 +322,8 @@ git tag v0.1 && git push origin v0.1
 
 ## Troubleshooting
 - **`unpack` produces nothing / hangs** — older versions had a pickle-parser stack bug and an unbounded inflate loop; both are fixed. If you still see a hang, rebuild from current `main` (the loop now has a guard).
-- **Windows build fails on zlib** — make sure CMake is using the vcpkg toolchain (`vcpkg.json` must be at the repo root so manifest mode engages).
 - **Repacked archive not recognized by the game** — confirm you did not change the logical paths; the index is path-sensitive and case-sensitive.
+- **Windows build fails on zlib** — zlib is now vendored under `third_party/zlib` and built by CMake automatically; you no longer need vcpkg. If it fails, ensure the `third_party/zlib` source tree is present and you used the CMake commands above (not a hand-rolled `cl` invocation).
 
 ## FAQ
 - **Is this a Ren'Py replacement?** No. It only reads/writes `.rpa` archives and (on Windows) injects into a running game. The game itself still runs on Ren'Py.
