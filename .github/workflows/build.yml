@@ -95,6 +95,8 @@ jobs:
           New-Item -ItemType Directory -Force $deploy | Out-Null
           Copy-Item build/Release/patcher_gui.exe $deploy/
           if (Test-Path build/Release/agent.dll) { Copy-Item build/Release/agent.dll $deploy/ }
+          # 复制自解压桩（导出 exe 功能需要，随 GUI 安装包一起分发）
+          if (Test-Path build/Release/sfx_stub.exe) { Copy-Item build/Release/sfx_stub.exe $deploy/ }
           # 复制 C++/CLI 运行所依赖的 VC++ 运行库，使目标机无需额外安装 VC++ 可再发行组件。
           # 优先从 VS 2022 Redist 目录找，找不到则从 System32 拷对应的 DLL（CI 机器自带）。
           $dlls = @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','msvcp140_1.dll','msvcp140_2.dll','concrt140.dll')
@@ -319,5 +321,32 @@ jobs:
             git commit -q -m "update version.json (build ${{ github.run_number }})"
             git push origin latest
           fi
+
+      - name: 发布正式版后自动升 VERSION minor（仅 workflow_dispatch 的 vX.Y.Z 正式版）
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          steps.meta.outputs.prerelease == 'false'
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          tag="${{ steps.meta.outputs.tag }}"
+          echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "非 vX.Y.Z 正式版（$tag），跳过自动升版"; exit 0; }
+          IFS='.' read -r MAJ MIN PAT <<< "${tag#v}"
+          MIN=$((10#$MIN + 1))
+          NEW="${MAJ}.${MIN}.0"
+          echo "发布正式版 $tag 后，VERSION 自动升至 $NEW"
+          git config user.email "patcher@example.com"
+          git config user.name "renpy_patcher"
+          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/Zz131417/renpy_patcher.git"
+          git fetch origin main --depth 1 2>/dev/null || true
+          git checkout -q -B main origin/main 2>/dev/null || git checkout -q main 2>/dev/null || true
+          printf '%s\n' "$NEW" > VERSION
+          git add VERSION
+          if git diff --cached --quiet; then echo "VERSION 无变化，跳过"; exit 0; fi
+          git commit -q -m "chore: 发布正式版 $tag 后自动升 VERSION 至 $NEW"
+          git push origin main
+          echo "已推送 VERSION=$NEW 到 main"
 
 

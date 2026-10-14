@@ -286,7 +286,8 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 
 - **版本号来源**：根目录 `VERSION` 文件（语义化版本，如 `1.1.0`）。CMake 读取后生成 `core/version.h`（被 `core/plugin.h` 包含），无需手工改版本号。
 - **构建号**：由 CI 自动注入（GitHub 仓库运行序号），用于 MSI 安装包的四段版本号（供安装器做升级/降级比较）以及 GUI 检查更新时的版本比较。本地未接入 CI 时构建号默认为 0。
-- **测试版命名**：自动发版采用 `v<主版本>-beta<字母>` 形式（字母从 `A` 开始依次递增，如 `betaA` / `betaB` / …）；每发布一次对应主版本的正式版后，该主版本下的 beta 计数自动重置回 `A`。
+- **测试版命名**：自动发版采用 `v<主版本>-beta<字母>` 形式（字母从 `A` 开始依次递增，如 `betaA` / `betaB` / …）；主版本号来自 `VERSION` 文件。
+- **发正式版后自动升版**：手动发布一个正式版（workflow_dispatch，tag 形如 `vX.Y.Z` 且 `prerelease=false`）后，CI 会自动把 `VERSION` 的 **minor 段 +1**（如 `1.2.0` → `1.3.0`）并推回 `main`；于是后续 `push main` 产生的测试版会自动进入新的主版本序列（`v1.3.0-betaA`…），不会回退覆盖旧 beta。无需手工维护下个开发版本号。
 - **发布方式**：
   - 推送 `main` 分支 → 自动编译并发布**测试版**（预发布）。
   - 在 GitHub Actions 页面 **手动 Run workflow（`workflow_dispatch`）** 并指定 tag（如 `v1.1.0`）→ 编译并发布**正式版**（非预发布）。
