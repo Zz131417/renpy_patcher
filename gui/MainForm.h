@@ -48,9 +48,10 @@ public:
     String^ Url;
     int    LatestBuild;
     int    CurBuild;
+    bool   Prerelease;   // 远端版本是否为测试版（prerelease）
     String^ Error;
-    UpdateResult(bool h, bool m, String^ v, String^ t, String^ u, int lb, int cb, String^ err)
-        : HasUpdate(h), Manual(m), Version(v), Tag(t), Url(u), LatestBuild(lb), CurBuild(cb), Error(err) {}
+    UpdateResult(bool h, bool m, String^ v, String^ t, String^ u, int lb, int cb, bool pre, String^ err)
+        : HasUpdate(h), Manual(m), Version(v), Tag(t), Url(u), LatestBuild(lb), CurBuild(cb), Prerelease(pre), Error(err) {}
 };
 
 public ref class MainForm : public Form
@@ -136,6 +137,7 @@ private:
     BackgroundWorker^ bgUpdate;
     Button^   btnCheckUpdate;
     Label^    lblUpdateStatus;
+    CheckBox^ chkUpdateBeta;   // 接收测试版更新开关
 
     // ---- 页面构建 / 切换 ----
     void BuildNav();
@@ -182,8 +184,14 @@ private:
 
     // ---- 检查更新 ----
     void btnCheckUpdate_Click(Object^, EventArgs^);
+    void chkUpdateBeta_CheckedChanged(Object^, EventArgs^);
     void bgUpdate_DoWork(Object^, DoWorkEventArgs^);
     void bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^);
+
+    // ---- 设置持久化 ----
+    String^ ConfigPath();
+    void LoadConfig();
+    void SaveConfig();
 
     // ---- 报错显示 / 防崩溃 辅助 ----
     void SyncLog();

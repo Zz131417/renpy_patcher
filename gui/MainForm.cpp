@@ -94,6 +94,7 @@ MainForm::MainForm()
     BuildHome();
     BuildGame();
     BuildSettings();
+    LoadConfig();   // 载入设置（如「接收测试版更新」开关），须在 bgUpdate 启动前
 
     this->Controls->Add(navBar);
     this->Controls->Add(pnlHome);
@@ -395,7 +396,7 @@ void MainForm::BuildSettings()
     // ---- 检查更新 ----
     GroupBox^ gbUpd = gcnew GroupBox();
     gbUpd->Text = L"检查更新（按构建号比较，自动对比 GitHub 上的最新构建）";
-    gbUpd->Location = Drawing::Point(12, 414); gbUpd->Size = Drawing::Size(720, 92);
+    gbUpd->Location = Drawing::Point(12, 414); gbUpd->Size = Drawing::Size(720, 118);
     btnCheckUpdate = gcnew Button();
     btnCheckUpdate->Location = Drawing::Point(12, 28); btnCheckUpdate->Size = Drawing::Size(120, 30);
     btnCheckUpdate->Text = L"检查更新";
@@ -403,9 +404,14 @@ void MainForm::BuildSettings()
     lblUpdateStatus->Location = Drawing::Point(144, 34); lblUpdateStatus->Size = Drawing::Size(560, 26);
     lblUpdateStatus->ForeColor = SystemColors::GrayText;
     lblUpdateStatus->Text = String::Format(L"当前构建号 {0}（将在启动时自动检查更新）", (int)RPATCHER_BUILD_NUM);
-    gbUpd->Controls->AddRange(gcnew array<Control^>{ btnCheckUpdate, lblUpdateStatus });
+    chkUpdateBeta = gcnew CheckBox();
+    chkUpdateBeta->Location = Drawing::Point(12, 62); chkUpdateBeta->Size = Drawing::Size(660, 24);
+    chkUpdateBeta->Text = L"接收测试版更新（不勾选则只提示正式版）";
+    chkUpdateBeta->Checked = false;
+    gbUpd->Controls->AddRange(gcnew array<Control^>{ btnCheckUpdate, lblUpdateStatus, chkUpdateBeta });
     pnlSettings->Controls->Add(gbUpd);
     btnCheckUpdate->Click += gcnew EventHandler(this, &MainForm::btnCheckUpdate_Click);
+    chkUpdateBeta->CheckedChanged += gcnew EventHandler(this, &MainForm::chkUpdateBeta_CheckedChanged);
 }
 
 /* ===================== 辅助 ===================== */
@@ -733,6 +739,46 @@ void MainForm::btnTransBuild_Click(Object^, EventArgs^)
 }
 
 
+/* ===================== 设置持久化 ===================== */
+String^ MainForm::ConfigPath()
+{
+    String^ dir = Environment::GetFolderPath(Environment::SpecialFolder::ApplicationData);
+    return System::IO::Path::Combine(dir, L"RenPyPatcher\gui.cfg");
+}
+
+void MainForm::LoadConfig()
+{
+    try {
+        String^ p = ConfigPath();
+        if (!System::IO::File::Exists(p)) return;
+        array<String^>^ lines = System::IO::File::ReadAllLines(p);
+        for each (String^ line in lines) {
+            if (line->StartsWith(L"updateBeta=")) {
+                String^ v = line->Substring(11)->Trim()->ToLower();
+                chkUpdateBeta->Checked = (v == L"1" || v == L"true");
+            }
+        }
+    }
+    catch (...) { /* 配置读取失败不影响启动 */ }
+}
+
+void MainForm::SaveConfig()
+{
+    try {
+        String^ p = ConfigPath();
+        String^ dir = System::IO::Path::GetDirectoryName(p);
+        if (!System::IO::Directory::Exists(dir)) System::IO::Directory::CreateDirectory(dir);
+        array<String^>^ lines = { String::Format(L"updateBeta={0}", chkUpdateBeta->Checked ? 1 : 0) };
+        System::IO::File::WriteAllLines(p, lines);
+    }
+    catch (...) { /* 配置写入失败忽略 */ }
+}
+
+void MainForm::chkUpdateBeta_CheckedChanged(Object^, EventArgs^)
+{
+    SaveConfig();   // 开关变化即持久化
+}
+
 /* ===================== 检查更新 ===================== */
 void MainForm::btnCheckUpdate_Click(Object^, EventArgs^)
 {
@@ -753,12 +799,14 @@ void MainForm::bgUpdate_DoWork(Object^, DoWorkEventArgs^ e)
         String^ ver  = JsonField(json, "version");
         String^ tag  = JsonField(json, "tag");
         String^ link = JsonField(json, "url");
+        String^ pre = JsonField(json, "prerelease");
+        bool latestPre = (pre != nullptr) && (pre->IndexOf("true") >= 0);
         int cur = RPATCHER_BUILD_NUM;
         bool has = (latestBuild > cur) && (latestBuild > 0);
-        e->Result = gcnew UpdateResult(has, manual, ver, tag, link, latestBuild, cur, nullptr);
+        e->Result = gcnew UpdateResult(has, manual, ver, tag, link, latestBuild, cur, latestPre, nullptr);
     }
     catch (Exception^ ex) {
-        e->Result = gcnew UpdateResult(false, manual, nullptr, nullptr, nullptr, 0, RPATCHER_BUILD_NUM, ex->Message);
+        e->Result = gcnew UpdateResult(false, manual, nullptr, nullptr, nullptr, 0, RPATCHER_BUILD_NUM, false, ex->Message);
     }
 }
 
@@ -773,7 +821,9 @@ void MainForm::bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^
         lblUpdateStatus->Text = L"检查更新失败（" + r->Error + L"）";
         return;
     }
-    if (r->HasUpdate) {
+    // 是否提示更新：远端是测试版(prerelease)且用户未开启「接收测试版」-> 不提示
+    bool showUpdate = r->HasUpdate && (chkUpdateBeta->Checked || !r->Prerelease);
+    if (showUpdate) {
         lblUpdateStatus->Text = String::Format(L"发现新版本 v{0}（build {1}，当前 {2}）",
                                                r->Version, r->LatestBuild, r->CurBuild);
         System::Windows::Forms::DialogResult dr = MessageBox::Show(
@@ -784,7 +834,11 @@ void MainForm::bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^
             try { System::Diagnostics::Process::Start(r->Url); } catch (...) {}
         }
     } else {
-        lblUpdateStatus->Text = String::Format(L"已是最新（build {0}）", r->CurBuild);
+        if (r->HasUpdate && !chkUpdateBeta->Checked && r->Prerelease) {
+            lblUpdateStatus->Text = String::Format(L"已是最新正式版（已关闭测试版更新通道，build {0}）", r->CurBuild);
+        } else {
+            lblUpdateStatus->Text = String::Format(L"已是最新（build {0}）", r->CurBuild);
+        }
         if (r->Manual) MessageBox::Show(L"当前已是最新版本。", L"检查更新",
                                          MessageBoxButtons::OK, MessageBoxIcon::Information);
     }
