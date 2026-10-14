@@ -1,7 +1,7 @@
 name: Build & Package
 
 # 触发：
-#   - push 到 main：自动编译并发布 Release（自动 tag：v<主版本>-beta<字母>（从 A 依次递增，发布正式版并变更版本号后自动重置），默认预发布）
+#   - push 到 main：自动编译并发布 Release（自动 tag：v<主版本>-beta<字母>（从 A 依次递增，每发布一次正式版即重置），默认预发布）
 #   - workflow_dispatch（手动「Run workflow」）：也可手动一键发版（tag 可自定义，正式/预发布可选）
 #   - push v* 标签：仅做构建验证（tag 仅作「定期备份」用途，不触发发版）
 #   - 对 main 的 PR：仅构建验证
@@ -174,9 +174,13 @@ jobs:
       - name: 计算 Release tag / 预发布
         id: meta
         shell: bash
+        env:
+          REL_TAG: ${{ github.event.inputs.release_tag }}
+          REL_PRE: ${{ github.event.inputs.prerelease }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
-          import os, subprocess
+          import os, subprocess, json, time, urllib.request
           from datetime import datetime
           out=os.environ['GITHUB_OUTPUT']
           evt=os.environ.get('GITHUB_EVENT_NAME','')
@@ -192,28 +196,44 @@ jobs:
               return s
 
           if evt=='workflow_dispatch':
-              tag_in=(os.environ.get('INPUT_RELEASE_TAG') or '').strip()
-              pre=(os.environ.get('INPUT_PRERELEASE') or 'true').strip().lower()=='true'
+              tag_in=(os.environ.get('REL_TAG') or '').strip()
+              pre=(os.environ.get('REL_PRE') or 'true').strip().lower()=='true'
               if not tag_in:
                   tag_in="build-%s" % datetime.utcnow().strftime('%Y%m%d-%H%M%S')
               tag=tag_in
               beta=''
           else:
               # push main 自动发测试版：v<主版本>-beta<字母>，从 A 依次递增。
-              # 计数 = 该主版本下已存在的 beta tag 数（不含本次），首次为 A。
-              # 发布正式版并变更 VERSION（新主版本前缀）后，计数自然重置回 A。
-              try:
-                  raw=subprocess.check_output(['git','ls-remote','--tags','origin'],
-                                              stderr=subprocess.DEVNULL).decode()
-              except Exception:
-                  raw=''
+              # 「发布正式版即重置」：若已存在该主版本的正式版（非预发布），则只统计
+              #   该正式版之后发布的 beta，使发完正式版后下一个 beta 重新从 A 开始。
+              def gh_get(url, token):
+                  req=urllib.request.Request(url, headers={
+                      "Authorization":"Bearer "+token,
+                      "Accept":"application/vnd.github+json",
+                      "User-Agent":"p"})
+                  for _ in range(5):
+                      try: return json.load(urllib.request.urlopen(req, timeout=30))
+                      except Exception: time.sleep(3)
+                  return []
+              token=os.environ.get('GH_TOKEN','')
+              rels=gh_get("https://api.github.com/repos/Zz131417/renpy_patcher/releases?per_page=100", token)
               prefix='v%s-beta' % ver
+              formal_pub=None
+              for r in rels:
+                  if r.get('tag_name')=='v%s'%ver and not r.get('prerelease', False):
+                      formal_pub=r.get('published_at') or ''
+                      break
               n=0
-              for line in raw.splitlines():
-                  if '\t' not in line: continue
-                  ref=line.split('\t',1)[1].replace('refs/tags/','').replace('^{}','')
-                  if ref.startswith(prefix) and ref[len(prefix):].isalpha():
-                      n+=1
+              if formal_pub:
+                  for r in rels:
+                      t=r.get('tag_name',''); p=r.get('prerelease', False); pu=r.get('published_at','') or ''
+                      if t.startswith(prefix) and p and pu > formal_pub:
+                          n+=1
+              else:
+                  for r in rels:
+                      t=r.get('tag_name',''); p=r.get('prerelease', False)
+                      if t.startswith(prefix) and p:
+                          n+=1
               beta=to_letters(n+1)
               tag="%s%s" % (prefix, beta)
               pre=True
