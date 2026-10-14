@@ -1,7 +1,7 @@
 name: Build & Package
 
 # 触发：
-#   - push 到 main：自动编译并发布 Release（自动 tag：v<主版本>-beta<字母序号>（构建号递增，A/B/C/.../Z/AA/...），默认预发布）
+#   - push 到 main：自动编译并发布 Release（自动 tag：v<主版本>-beta<字母>（从 A 依次递增，发布正式版并变更版本号后自动重置），默认预发布）
 #   - workflow_dispatch（手动「Run workflow」）：也可手动一键发版（tag 可自定义，正式/预发布可选）
 #   - push v* 标签：仅做构建验证（tag 仅作「定期备份」用途，不触发发版）
 #   - 对 main 的 PR：仅构建验证
@@ -176,33 +176,51 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import os
+          import os, subprocess
           from datetime import datetime
           out=os.environ['GITHUB_OUTPUT']
           evt=os.environ.get('GITHUB_EVENT_NAME','')
-          run_num=int(os.environ.get('GITHUB_RUN_NUMBER','0') or 0)
           ver=open('VERSION').read().strip().lstrip('vV').strip()
-          # 构建号 -> base26 字母（A,B,...,Z,AA,...），作为测试版后缀
-          n=run_num if run_num>0 else 1
-          s=''
-          while True:
-              n,r=divmod(n-1,26)
-              s=chr(65+r)+s
-              if n==0: break
+
+          def to_letters(num):
+              s=''
+              n=num
+              while True:
+                  n,r=divmod(n-1,26)
+                  s=chr(65+r)+s
+                  if n==0: break
+              return s
+
           if evt=='workflow_dispatch':
               tag_in=(os.environ.get('INPUT_RELEASE_TAG') or '').strip()
               pre=(os.environ.get('INPUT_PRERELEASE') or 'true').strip().lower()=='true'
               if not tag_in:
                   tag_in="build-%s" % datetime.utcnow().strftime('%Y%m%d-%H%M%S')
               tag=tag_in
+              beta=''
           else:
-              # push main 自动发测试版：v<主版本>-beta<字母>
-              tag="v%s-beta%s" % (ver, s)
+              # push main 自动发测试版：v<主版本>-beta<字母>，从 A 依次递增。
+              # 计数 = 该主版本下已存在的 beta tag 数（不含本次），首次为 A。
+              # 发布正式版并变更 VERSION（新主版本前缀）后，计数自然重置回 A。
+              try:
+                  raw=subprocess.check_output(['git','ls-remote','--tags','origin'],
+                                              stderr=subprocess.DEVNULL).decode()
+              except Exception:
+                  raw=''
+              prefix='v%s-beta' % ver
+              n=0
+              for line in raw.splitlines():
+                  if '\t' not in line: continue
+                  ref=line.split('\t',1)[1].replace('refs/tags/','').replace('^{}','')
+                  if ref.startswith(prefix) and ref[len(prefix):].isalpha():
+                      n+=1
+              beta=to_letters(n+1)
+              tag="%s%s" % (prefix, beta)
               pre=True
+
           with open(out,'a') as f:
               f.write("version=%s\n" % ver)
-              f.write("build_num=%d\n" % run_num)
-              f.write("beta_suffix=%s\n" % s)
+              f.write("beta_suffix=%s\n" % beta)
               f.write("tag=%s\n" % tag)
               f.write("prerelease=%s\n" % str(pre).lower())
           PY
