@@ -169,6 +169,7 @@ private:
     void AppendLog(String^ msg);
     String^ ResolveGameRpa(String^ token);   // .zip 整包 -> 解压定位内部 .rpa
     String^ FindStub();                       // 查找同目录 sfx_stub.exe
+    String^ TempPath();                       // 临时目录（避开 Win32 宏 GetTempPath）
     void RefreshGames();
     void BrowseFile(TextBox^ tb, String^ filter);
     void BrowseFolder(TextBox^ tb);

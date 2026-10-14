@@ -628,7 +628,7 @@ String^ MainForm::ResolveGameRpa(String^ token)
     String^ t = token->Trim();
     std::string in = ToUtf8(t);
     if (!is_zip_file(in.c_str())) return t;
-    String^ tmp = System::IO::Path::Combine(System::IO::Path::GetTempPath(),
+    String^ tmp = System::IO::Path::Combine(TempPath(),
                     L"renpy_patcher_gui_" + DateTime::Now.Ticks.ToString());
     char rpa[2048]; rpa[0] = 0;
     int rc = resolve_game_source(in.c_str(), ToUtf8(tmp).c_str(), rpa, sizeof(rpa));
@@ -642,6 +642,16 @@ String^ MainForm::FindStub()
     String^ p = System::IO::Path::Combine(dir, L"sfx_stub.exe");
     if (System::IO::File::Exists(p)) return p;
     return nullptr;
+}
+
+/* 取系统临时目录。注意：不能写 System::IO::Path::GetTempPath()，
+ * 因为 Windows.h 里宏 #define GetTempPath GetTempPathA 会把它展开成不属于该类的成员。 */
+String^ MainForm::TempPath()
+{
+    String^ t = System::Environment::GetEnvironmentVariable(L"TEMP");
+    if (String::IsNullOrEmpty(t)) t = System::Environment::GetEnvironmentVariable(L"TMP");
+    if (String::IsNullOrEmpty(t)) t = L"C:\\Temp";
+    return t;
 }
 
 void MainForm::RefreshGames()
@@ -659,7 +669,7 @@ void MainForm::btnAddGame_Click(Object^, EventArgs^)
         std::string path = ToUtf8(txtGamePath->Text->Trim());
         if (name.empty() || path.empty()) { AppendLog(L"[游戏管理] 别名与路径均不能为空"); return; }
         if (is_zip_file(path.c_str())) {
-            String^ tmp = System::IO::Path::Combine(System::IO::Path::GetTempPath(), L"rpg_import_" + DateTime::Now.Ticks.ToString());
+            String^ tmp = System::IO::Path::Combine(TempPath(), L"rpg_import_" + DateTime::Now.Ticks.ToString());
             char rpa[2048]; rpa[0] = 0;
             int zrc = resolve_game_source(path.c_str(), ToUtf8(tmp).c_str(), rpa, sizeof(rpa));
             if (zrc != RP_OK || rpa[0] == 0) { AppendLog(L"[游戏管理] 压缩包内未找到 .rpa 资源包"); return; }
