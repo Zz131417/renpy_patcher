@@ -50,7 +50,7 @@ jobs:
       # zlib 源码已内置在 third_party/zlib，由 CMake add_subdirectory 构建，
       # 无需 vcpkg / 系统 zlib / 网络连接。
       - name: Configure
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${GITHUB_RUN_NUMBER}
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
 
       - name: Build
         run: cmake --build build --config Release
