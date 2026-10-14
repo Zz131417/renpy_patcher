@@ -8,6 +8,8 @@ using namespace System;
 using namespace System::Windows::Forms;
 using namespace System::IO;
 using namespace RenPyPatcherGUI;
+using namespace System::Net;
+using namespace System::ComponentModel;
 
 namespace RenPyPatcherGUI {
 
@@ -49,6 +51,33 @@ static int __cdecl GameListCallback(const game_entry_t *g, void *ud) {
     return 0;
 }
 
+
+/* 从简单 JSON 文本中提取字段（用于解析 version.json / 检查更新） */
+static String^ JsonField(String^ json, String^ key)
+{
+    String^ pat = """ + key + "":";
+    int i = json->IndexOf(pat);
+    if (i < 0) return nullptr;
+    int c = i + pat->Length;
+    while (c < json->Length && (json[c]==' '||json[c]=='	')) c++;
+    if (c >= json->Length) return nullptr;
+    if (json[c] == '"') {
+        int end = json->IndexOf('"', c+1);
+        if (end < 0) return nullptr;
+        return json->Substring(c+1, end - c - 1);
+    }
+    int end = c;
+    while (end < json->Length && json[end]>='0' && json[end]<='9') end++;
+    if (end == c) return nullptr;
+    return json->Substring(c, end - c);
+}
+static int JsonInt(String^ json, String^ key)
+{
+    String^ v = JsonField(json, key);
+    if (v == nullptr) return 0;
+    try { return Int32::Parse(v); } catch (...) { return 0; }
+}
+
 /* ===================== 构造函数 ===================== */
 MainForm::MainForm()
 {
@@ -76,6 +105,12 @@ MainForm::MainForm()
     RefreshGames();
     AppendLog(gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING) + L" 已启动");
     SyncLog();   // 启动即把已有日志（含历史错误）载入界面
+
+    // 检查更新（后台线程，不阻塞 UI；启动后静默检查一次）
+    bgUpdate = gcnew BackgroundWorker();
+    bgUpdate->DoWork += gcnew DoWorkEventHandler(this, &MainForm::bgUpdate_DoWork);
+    bgUpdate->RunWorkerCompleted += gcnew RunWorkerCompletedEventHandler(this, &MainForm::bgUpdate_RunWorkerCompleted);
+    if (!bgUpdate->IsBusy) bgUpdate->RunWorkerAsync(false);  // false=静默（仅发现新版本时弹窗）
 }
 
 /* ===================== 导航栏 ===================== */
@@ -356,7 +391,21 @@ void MainForm::BuildSettings()
         L"· 底层复用同一套核心 C 库，GUI 与 CLI 行为一致。";
     gbAbout->Controls->Add(lblAbout);
     pnlSettings->Controls->Add(gbAbout);
-}
+
+    // ---- 检查更新 ----
+    GroupBox^ gbUpd = gcnew GroupBox();
+    gbUpd->Text = L"检查更新（按构建号比较，自动对比 GitHub 上的最新构建）";
+    gbUpd->Location = Drawing::Point(12, 414); gbUpd->Size = Drawing::Size(720, 92);
+    btnCheckUpdate = gcnew Button();
+    btnCheckUpdate->Location = Drawing::Point(12, 28); btnCheckUpdate->Size = Drawing::Size(120, 30);
+    btnCheckUpdate->Text = L"检查更新";
+    lblUpdateStatus = gcnew Label();
+    lblUpdateStatus->Location = Drawing::Point(144, 34); lblUpdateStatus->Size = Drawing::Size(560, 26);
+    lblUpdateStatus->ForeColor = SystemColors::GrayText;
+    lblUpdateStatus->Text = L"当前构建号 " + RPATCHER_BUILD_NUM.ToString() + L"（将在启动时自动检查更新）";
+    gbUpd->Controls->AddRange(gcnew array<Control^>{ btnCheckUpdate, lblUpdateStatus });
+    pnlSettings->Controls->Add(gbUpd);
+    btnCheckUpdate->Click += gcnew EventHandler(this, &MainForm::btnCheckUpdate_Click);
 
 /* ===================== 辅助 ===================== */
 void MainForm::AppendLog(String^ msg)
@@ -680,6 +729,67 @@ void MainForm::btnTransBuild_Click(Object^, EventArgs^)
     catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
     catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
     SyncLog();
+}
+
+
+/* ===================== 检查更新 ===================== */
+void MainForm::btnCheckUpdate_Click(Object^, EventArgs^)
+{
+    if (bgUpdate->IsBusy) { lblUpdateStatus->Text = L"正在检查更新…"; return; }
+    lblUpdateStatus->Text = L"正在检查更新…";
+    bgUpdate->RunWorkerAsync(true);   // true=手动（总是弹窗反馈）
+}
+
+void MainForm::bgUpdate_DoWork(Object^, DoWorkEventArgs^ e)
+{
+    bool manual = (e->Argument != nullptr) ? (bool)e->Argument : false;
+    try {
+        String^ url = L"https://raw.githubusercontent.com/Zz131417/renpy_patcher/latest/version.json";
+        WebClient^ wc = gcnew WebClient();
+        wc->Headers->Add("User-Agent", "RenPyPatcher-GUI");
+        String^ json = wc->DownloadString(url);
+        int latestBuild = JsonInt(json, "build");
+        String^ ver  = JsonField(json, "version");
+        String^ tag  = JsonField(json, "tag");
+        String^ link = JsonField(json, "url");
+        int cur = RPATCHER_BUILD_NUM;
+        bool has = (latestBuild > cur) && (latestBuild > 0);
+        e->Result = gcnew UpdateResult(has, manual, ver, tag, link, latestBuild, cur, nullptr);
+    }
+    catch (Exception^ ex) {
+        e->Result = gcnew UpdateResult(false, manual, nullptr, nullptr, nullptr, 0, RPATCHER_BUILD_NUM, ex->Message);
+    }
+}
+
+void MainForm::bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^ e)
+{
+    if (e->Error != nullptr || e->Result == nullptr) {
+        lblUpdateStatus->Text = L"检查更新失败（网络不可用或可稍后重试）";
+        return;
+    }
+    UpdateResult^ r = (UpdateResult^)e->Result;
+    if (!String::IsNullOrEmpty(r->Error)) {
+        lblUpdateStatus->Text = L"检查更新失败（" + r->Error + L"）";
+        return;
+    }
+    if (r->HasUpdate) {
+        lblUpdateStatus->Text = String::Format(L"发现新版本 v{0}（build {1}，当前 {2}）",
+                                               r->Version, r->LatestBuild, r->CurBuild);
+        System::Windows::Forms::DialogResult dr = MessageBox::Show(
+            String::Format(L"发现新版本 v{0}（build {1}）
+当前版本 build {2}。
+
+是否前往下载？",
+                          r->Version, r->LatestBuild, r->CurBuild),
+            L"检查更新", MessageBoxButtons::YesNo, MessageBoxIcon::Information);
+        if (dr == System::Windows::Forms::DialogResult::Yes && !String::IsNullOrEmpty(r->Url)) {
+            try { System::Diagnostics::Process::Start(r->Url); } catch (...) {}
+        }
+    } else {
+        lblUpdateStatus->Text = String::Format(L"已是最新（build {0}）", r->CurBuild);
+        if (r->Manual) MessageBox::Show(L"当前已是最新版本。", L"检查更新",
+                                         MessageBoxButtons::OK, MessageBoxIcon::Information);
+    }
 }
 
 } // namespace RenPyPatcherGUI

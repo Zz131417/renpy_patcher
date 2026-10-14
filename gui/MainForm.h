@@ -27,6 +27,7 @@ using namespace System::Windows::Forms;
 using namespace System::IO;
 using namespace System::Drawing;
 using namespace msclr::interop;
+using namespace System::ComponentModel;
 
 /* 页面索引 */
 static const int PAGE_GAME     = 0;   // 游戏管理
@@ -37,6 +38,21 @@ static const int PAGE_SETTINGS = 2;   // 设置
 /// 主窗体：模块化导航布局，提供游戏管理/首页/设置三个页面。
 /// 功能与 CLI 一一对应，共用核心 C 实现。
 /// </summary>
+/// <summary>检查更新结果（后台线程 -> UI 线程传递用）</summary>
+public ref class UpdateResult {
+public:
+    bool   HasUpdate;
+    bool   Manual;
+    String^ Version;
+    String^ Tag;
+    String^ Url;
+    int    LatestBuild;
+    int    CurBuild;
+    String^ Error;
+    UpdateResult(bool h, bool m, String^ v, String^ t, String^ u, int lb, int cb, String^ err)
+        : HasUpdate(h), Manual(m), Version(v), Tag(t), Url(u), LatestBuild(lb), CurBuild(cb), Error(err) {}
+};
+
 public ref class MainForm : public Form
 {
 public:
@@ -116,6 +132,10 @@ private:
     // ---- 首页 / 设置 的展示控件 ----
     TextBox^  txtHomeGuide;
     Label^    lblAbout;
+    // ---- 检查更新 ----
+    BackgroundWorker^ bgUpdate;
+    Button^   btnCheckUpdate;
+    Label^    lblUpdateStatus;
 
     // ---- 页面构建 / 切换 ----
     void BuildNav();
@@ -159,6 +179,11 @@ private:
     void btnTransExtract_Click(Object^, EventArgs^);
     void btnTransAI_Click(Object^, EventArgs^);
     void btnTransBuild_Click(Object^, EventArgs^);
+
+    // ---- 检查更新 ----
+    void btnCheckUpdate_Click(Object^, EventArgs^);
+    void bgUpdate_DoWork(Object^, DoWorkEventArgs^);
+    void bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^);
 
     // ---- 报错显示 / 防崩溃 辅助 ----
     void SyncLog();

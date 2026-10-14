@@ -241,6 +241,20 @@ jobs:
       - name: List artifacts
         run: ls -R artifacts
 
+      - name: 生成 version.json（供 GUI 检查更新，含构建号）
+        shell: bash
+        run: |
+          printf '{\n' > artifacts/version.json
+          printf '  "tag": "${{ steps.meta.outputs.tag }}",\n' >> artifacts/version.json
+          printf '  "version": "${{ steps.meta.outputs.version }}",\n' >> artifacts/version.json
+          printf '  "build": ${{ github.run_number }},\n' >> artifacts/version.json
+          printf '  "prerelease": ${{ steps.meta.outputs.prerelease }},\n' >> artifacts/version.json
+          printf '  "date": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> artifacts/version.json
+          printf '  "url": "https://github.com/Zz131417/renpy_patcher/releases/tag/${{ steps.meta.outputs.tag }}"\n' >> artifacts/version.json
+          printf '}\n' >> artifacts/version.json
+          echo "--- version.json ---"
+          cat artifacts/version.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -249,3 +263,31 @@ jobs:
           draft: false
           prerelease: ${{ steps.meta.outputs.prerelease }}
           body_path: release_notes.md
+      - name: 发布 version.json 到 latest 分支（供 GUI 检查更新读取最新构建号）
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          mkdir -p /tmp/latest_push
+          cd /tmp/latest_push
+          git init -q
+          git config user.email "patcher@example.com"
+          git config user.name "renpy_patcher"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/Zz131417/renpy_patcher.git"
+          git fetch origin latest --depth 1 2>/dev/null || true
+          if git rev-parse origin/latest >/dev/null 2>&1; then
+            git checkout -q -B latest origin/latest
+          else
+            git checkout -q --orphan latest
+          fi
+          cp "${{ github.workspace }}/artifacts/version.json" ./version.json
+          git add version.json
+          if git diff --cached --quiet; then
+            echo "version.json 无变化，跳过推送"
+          else
+            git commit -q -m "update version.json (build ${{ github.run_number }})"
+            git push origin latest
+          fi
+
+
