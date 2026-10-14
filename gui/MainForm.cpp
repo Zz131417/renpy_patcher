@@ -925,7 +925,7 @@ void MainForm::bgTask_DoWork(Object^, DoWorkEventArgs^ e)
         case OpType::ExportLauncher: {
             std::string dir = a.empty() ? "out" : a;
             std::string out = b.empty() ? "setup.exe" : b;
-            std::string run = c.empty() ? std::string() : c;
+            std::string run = cc.empty() ? std::string() : cc;
             String^ stub = FindStub();
             std::string stub8 = (stub && stub->Length) ? ToUtf8(stub) : std::string();
             rc = sfx_build(stub8.empty()?nullptr:stub8.c_str(), dir.c_str(), out.c_str(), run.c_str(), 1);
