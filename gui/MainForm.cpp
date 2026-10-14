@@ -1,6 +1,7 @@
 // gui/MainForm.cpp —— WinForms 主窗体实现（C++/CLI）
 // 模块化布局：左侧导航栏 + 右侧三页面（游戏管理 / 首页 / 设置）
 #include "MainForm.h"
+#include <stdlib.h>
 
 static long g_logPos = 0;   // 已读取的 patcher.log 字节数，用于增量同步到日志框
 
@@ -10,6 +11,67 @@ using namespace System::IO;
 using namespace RenPyPatcherGUI;
 using namespace System::Net;
 using namespace System::ComponentModel;
+
+/* ===================== 主题 ===================== */
+static Drawing::Color C_ACCENT   = Drawing::Color::FromArgb(59, 130, 246);   // blue-500
+static Drawing::Color C_ACCENT_D = Drawing::Color::FromArgb(37, 99, 235);    // hover
+static Drawing::Color C_SIDEBAR  = Drawing::Color::FromArgb(31, 41, 55);     // gray-800
+static Drawing::Color C_SIDEHI   = Drawing::Color::FromArgb(55, 65, 81);     // hover
+static Drawing::Color C_PANEL    = Drawing::Color::FromArgb(243, 244, 246);  // gray-100
+static Drawing::Color C_TEXT     = Drawing::Color::FromArgb(17, 24, 39);
+static Drawing::Color C_MUTE     = Drawing::Color::FromArgb(107, 114, 128);
+static Drawing::Color C_CONSOLE_B = Drawing::Color::FromArgb(28, 30, 38);
+static Drawing::Color C_CONSOLE_F = Drawing::Color::FromArgb(214, 222, 235);
+
+static Drawing::Font^ F_DEF   = gcnew Drawing::Font(L"Microsoft YaHei", 9.5F);
+static Drawing::Font^ F_DEF_B = gcnew Drawing::Font(L"Microsoft YaHei", 9.5F, FontStyle::Bold);
+static Drawing::Font^ F_TITLE = gcnew Drawing::Font(L"Microsoft YaHei", 20F, FontStyle::Bold);
+static Drawing::Font^ F_SUB   = gcnew Drawing::Font(L"Microsoft YaHei", 10F);
+static Drawing::Font^ F_MONO  = gcnew Drawing::Font(L"Consolas", 9.5F);
+
+/* 统一按钮样式：primary=强调色实心，否则浅灰 */
+static void StyleBtn(Button^ b, bool primary)
+{
+    b->FlatStyle = FlatStyle::Flat;
+    b->Font = F_DEF;
+    b->UseVisualStyleBackColor = false;
+    b->Cursor = Cursors::Hand;
+    b->FlatAppearance->BorderSize = 0;
+    if (primary) {
+        b->BackColor = C_ACCENT;
+        b->ForeColor = Drawing::Color::White;
+        b->FlatAppearance->MouseOverBackColor = C_ACCENT_D;
+        b->FlatAppearance->MouseDownBackColor = C_ACCENT_D;
+    } else {
+        b->BackColor = Drawing::Color::FromArgb(229, 231, 235);
+        b->ForeColor = C_TEXT;
+        b->FlatAppearance->MouseOverBackColor = Drawing::Color::FromArgb(209, 213, 219);
+        b->FlatAppearance->MouseDownBackColor = Drawing::Color::FromArgb(209, 213, 219);
+    }
+}
+
+/* 统一分组框样式（标题用强调色） */
+static GroupBox^ MakeGroup(String^ title, int x, int y, int w, int h)
+{
+    GroupBox^ g = gcnew GroupBox();
+    g->Location = Drawing::Point(x, y); g->Size = Drawing::Size(w, h);
+    g->Text = title;
+    g->Font = F_DEF_B;
+    g->ForeColor = C_ACCENT;
+    g->UseCompatibleTextRendering = true;
+    return g;
+}
+
+/* 统一标签 */
+static Label^ MakeLabel(String^ text, int x, int y, int w, int h, bool mute)
+{
+    Label^ l = gcnew Label();
+    l->Location = Drawing::Point(x, y); l->Size = Drawing::Size(w, h);
+    l->Text = text; l->Font = F_DEF;
+    l->ForeColor = mute ? C_MUTE : C_TEXT;
+    l->TextAlign = Drawing::ContentAlignment::MiddleLeft;
+    return l;
+}
 
 namespace RenPyPatcherGUI {
 
@@ -51,15 +113,14 @@ static int __cdecl GameListCallback(const game_entry_t *g, void *ud) {
     return 0;
 }
 
-
 /* 从简单 JSON 文本中提取字段（用于解析 version.json / 检查更新） */
 static String^ JsonField(String^ json, String^ key)
 {
-    String^ pat = """ + key + "":";
+    String^ pat = "\"" + key + "\":";
     int i = json->IndexOf(pat);
     if (i < 0) return nullptr;
     int c = i + pat->Length;
-    while (c < json->Length && (json[c]==' '||json[c]=='	')) c++;
+    while (c < json->Length && (json[c]==' '||json[c]=='\t')) c++;
     if (c >= json->Length) return nullptr;
     if (json[c] == '"') {
         int end = json->IndexOf('"', c+1);
@@ -78,13 +139,41 @@ static int JsonInt(String^ json, String^ key)
     try { return Int32::Parse(v); } catch (...) { return 0; }
 }
 
+/* 失败信息（不触碰 UI 控件，可在后台线程调用） */
+static String^ FailMsg(String^ op, int rc)
+{
+    String^ meaning = gcnew String(rp_strerror(rc));
+    String^ detail  = gcnew String(rp_last_error());
+    String^ m = L"[" + op + L"] 失败：错误码 " + rc.ToString() + L" (" + meaning + L")";
+    if (detail != nullptr && detail->Length > 0) m += L" | 详情: " + detail;
+    return m;
+}
+
+/* ===================== 后台任务上下文 ===================== */
+ref class TaskCtx {
+public:
+    OpType   Type;
+    String^  a, b, c, d;
+    String^  opName;
+    int      rc;
+    bool     ok;
+    String^  exMsg;
+    String^  msg;
+    String^  outPath;   // TransAI 完成后回填给 txtTransCsv
+    String^  base, key, model;  // AI 配置
+    Button^  btn;
+};
+
 /* ===================== 构造函数 ===================== */
 MainForm::MainForm()
 {
     this->Text = gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING);
-    this->ClientSize = Drawing::Size(930, 740);
-    this->MinimumSize = Drawing::Size(760, 480);
+    this->ClientSize = Drawing::Size(944, 772);
+    this->MinimumSize = Drawing::Size(780, 520);
     this->StartPosition = FormStartPosition::CenterScreen;
+    this->Font = F_DEF;
+    this->BackColor = Drawing::Color::White;
+    this->DoubleBuffered = true;
 
     log_init("patcher.log");
     log_set_tag("gui");
@@ -96,22 +185,42 @@ MainForm::MainForm()
     BuildSettings();
     LoadConfig();   // 载入设置（如「接收测试版更新」开关），须在 bgUpdate 启动前
 
+    // 底部状态栏
+    statusBar = gcnew StatusStrip();
+    statusBar->Dock = DockStyle::Bottom;
+    statusBar->BackColor = C_PANEL;
+    statusLabel = gcnew ToolStripStatusLabel();
+    statusLabel->Text = L"就绪";
+    statusLabel->Spring = true;
+    statusLabel->Font = F_DEF;
+    statusVer = gcnew ToolStripStatusLabel();
+    statusVer->Text = gcnew String("v") + gcnew String(RPATCHER_VERSION_STRING);
+    statusVer->BorderSides = ToolStripStatusLabelBorderSides::Left;
+    statusVer->Font = F_DEF;
+    statusBar->Items->AddRange(gcnew array<ToolStripItem^>{ statusLabel, statusVer });
+
     this->Controls->Add(navBar);
     this->Controls->Add(pnlHome);
     this->Controls->Add(pnlGame);
     this->Controls->Add(pnlSettings);
+    this->Controls->Add(statusBar);
 
     ShowPage(PAGE_GAME);   // 默认进入「游戏管理」
 
     RefreshGames();
     AppendLog(gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING) + L" 已启动");
-    SyncLog();   // 启动即把已有日志（含历史错误）载入界面
+    SyncLog();
 
     // 检查更新（后台线程，不阻塞 UI；启动后静默检查一次）
     bgUpdate = gcnew BackgroundWorker();
     bgUpdate->DoWork += gcnew DoWorkEventHandler(this, &MainForm::bgUpdate_DoWork);
     bgUpdate->RunWorkerCompleted += gcnew RunWorkerCompletedEventHandler(this, &MainForm::bgUpdate_RunWorkerCompleted);
-    if (!bgUpdate->IsBusy) bgUpdate->RunWorkerAsync(false);  // false=静默（仅发现新版本时弹窗）
+    if (!bgUpdate->IsBusy) bgUpdate->RunWorkerAsync(false);
+
+    // 文件操作后台任务
+    bgTask = gcnew BackgroundWorker();
+    bgTask->DoWork += gcnew DoWorkEventHandler(this, &MainForm::bgTask_DoWork);
+    bgTask->RunWorkerCompleted += gcnew RunWorkerCompletedEventHandler(this, &MainForm::bgTask_RunWorkerCompleted);
 }
 
 /* ===================== 导航栏 ===================== */
@@ -119,25 +228,55 @@ void MainForm::BuildNav()
 {
     navBar = gcnew Panel();
     navBar->Location = Drawing::Point(0, 0);
-    navBar->Size = Drawing::Size(150, 740);
-    navBar->BackColor = SystemColors::ControlLight;
+    navBar->Size = Drawing::Size(168, 772);
+    navBar->BackColor = C_SIDEBAR;
+
+    navHead = gcnew Panel();
+    navHead->Location = Drawing::Point(0, 0);
+    navHead->Size = Drawing::Size(168, 84);
+    navHead->BackColor = Drawing::Color::FromArgb(17, 24, 39);
+    Label^ app = gcnew Label();
+    app->Location = Drawing::Point(16, 18); app->Size = Drawing::Size(140, 26);
+    app->Text = L"Ren'Py Patcher";
+    app->Font = gcnew Drawing::Font(L"Microsoft YaHei", 14, FontStyle::Bold);
+    app->ForeColor = Drawing::Color::White;
+    Label^ sub = gcnew Label();
+    sub->Location = Drawing::Point(16, 46); sub->Size = Drawing::Size(140, 20);
+    sub->Text = L"解包 / 注入 / 汉化";
+    sub->Font = F_SUB;
+    sub->ForeColor = Drawing::Color::FromArgb(148, 163, 184);
+    navHead->Controls->AddRange(gcnew array<Control^>{ app, sub });
 
     btnNavGame = gcnew Button();
-    btnNavGame->Location = Drawing::Point(12, 24);  btnNavGame->Size = Drawing::Size(126, 38);
-    btnNavGame->Text = L"游戏管理";  btnNavGame->FlatStyle = FlatStyle::Flat;
+    btnNavGame->Location = Drawing::Point(14, 104);  btnNavGame->Size = Drawing::Size(140, 40);
+    btnNavGame->Text = L"游戏管理";
     btnNavHome = gcnew Button();
-    btnNavHome->Location = Drawing::Point(12, 68);  btnNavHome->Size = Drawing::Size(126, 38);
-    btnNavHome->Text = L"首页";       btnNavHome->FlatStyle = FlatStyle::Flat;
+    btnNavHome->Location = Drawing::Point(14, 152);  btnNavHome->Size = Drawing::Size(140, 40);
+    btnNavHome->Text = L"首页";
     btnNavSettings = gcnew Button();
-    btnNavSettings->Location = Drawing::Point(12, 112); btnNavSettings->Size = Drawing::Size(126, 38);
-    btnNavSettings->Text = L"设置";    btnNavSettings->FlatStyle = FlatStyle::Flat;
+    btnNavSettings->Location = Drawing::Point(14, 200); btnNavSettings->Size = Drawing::Size(140, 40);
+    btnNavSettings->Text = L"设置";
 
-    Label^ lblNav = gcnew Label();
-    lblNav->Location = Drawing::Point(12, 700); lblNav->Size = Drawing::Size(126, 32);
-    lblNav->Text = gcnew String("v") + gcnew String(RPATCHER_VERSION_STRING);
-    lblNav->ForeColor = SystemColors::GrayText;
+    for each (Button^ b in gcnew array<Button^>{ btnNavGame, btnNavHome, btnNavSettings }) {
+        b->FlatStyle = FlatStyle::Flat;
+        b->Font = F_DEF_B;
+        b->UseVisualStyleBackColor = false;
+        b->Cursor = Cursors::Hand;
+        b->ForeColor = Drawing::Color::FromArgb(203, 213, 225);
+        b->BackColor = C_SIDEBAR;
+        b->FlatAppearance->BorderSize = 0;
+        b->FlatAppearance->MouseOverBackColor = C_SIDEHI;
+        b->TextAlign = Drawing::ContentAlignment::MiddleLeft;
+        b->Padding = System::Windows::Forms::Padding(14, 0, 0, 0);
+    }
 
-    navBar->Controls->AddRange(gcnew array<Control^>{ btnNavGame, btnNavHome, btnNavSettings, lblNav });
+    lblNavVer = gcnew Label();
+    lblNavVer->Location = Drawing::Point(14, 740); lblNavVer->Size = Drawing::Size(140, 24);
+    lblNavVer->Text = gcnew String("v") + gcnew String(RPATCHER_VERSION_STRING);
+    lblNavVer->Font = F_DEF;
+    lblNavVer->ForeColor = Drawing::Color::FromArgb(148, 163, 184);
+
+    navBar->Controls->AddRange(gcnew array<Control^>{ navHead, btnNavGame, btnNavHome, btnNavSettings, lblNavVer });
     btnNavGame->Click    += gcnew EventHandler(this, &MainForm::btnNavGame_Click);
     btnNavHome->Click    += gcnew EventHandler(this, &MainForm::btnNavHome_Click);
     btnNavSettings->Click += gcnew EventHandler(this, &MainForm::btnNavSettings_Click);
@@ -149,10 +288,10 @@ void MainForm::ShowPage(int idx)
     pnlHome->Visible     = (idx == PAGE_HOME);
     pnlSettings->Visible = (idx == PAGE_SETTINGS);
 
-    Drawing::Color sel = Drawing::Color::FromArgb(0, 120, 215);
-    Drawing::Color nor = SystemColors::Control;
+    Drawing::Color sel = C_ACCENT;
+    Drawing::Color nor = C_SIDEBAR;
     Drawing::Color selF = Drawing::Color::White;
-    Drawing::Color norF = SystemColors::ControlText;
+    Drawing::Color norF = Drawing::Color::FromArgb(203, 213, 225);
 
     btnNavGame->BackColor    = (idx == PAGE_GAME)     ? sel : nor;
     btnNavGame->ForeColor    = (idx == PAGE_GAME)     ? selF : norF;
@@ -170,25 +309,36 @@ void MainForm::btnNavSettings_Click(Object^, EventArgs^) { ShowPage(PAGE_SETTING
 void MainForm::BuildHome()
 {
     pnlHome = gcnew Panel();
-    pnlHome->Location = Drawing::Point(156, 8);
-    pnlHome->Size = Drawing::Size(766, 724);
+    pnlHome->Location = Drawing::Point(176, 8);
+    pnlHome->Size = Drawing::Size(760, 724);
     pnlHome->AutoScroll = true;
+    pnlHome->BackColor = Drawing::Color::White;
 
+    Panel^ head = gcnew Panel();
+    head->Location = Drawing::Point(0, 0);
+    head->Size = Drawing::Size(760, 104);
+    head->BackColor = C_ACCENT;
     Label^ t = gcnew Label();
-    t->Location = Drawing::Point(24, 24); t->Size = Drawing::Size(700, 44);
-    t->Font = gcnew Drawing::Font(L"Microsoft YaHei", 22, FontStyle::Bold);
+    t->Location = Drawing::Point(28, 20); t->Size = Drawing::Size(700, 40);
+    t->Font = F_TITLE; t->ForeColor = Drawing::Color::White;
     t->Text = L"Ren'Py Patcher";
-
     Label^ v = gcnew Label();
-    v->Location = Drawing::Point(24, 76); v->Size = Drawing::Size(700, 24);
-    v->Text = gcnew String("版本 ") + gcnew String(RPATCHER_VERSION_STRING) + L"  ·  解包 / 注入 / 汉化一站式工具";
+    v->Location = Drawing::Point(28, 64); v->Size = Drawing::Size(700, 26);
+    v->Font = F_SUB; v->ForeColor = Drawing::Color::FromArgb(219, 234, 254);
+    v->Text = gcnew String("版本 ") + gcnew String(RPATCHER_VERSION_STRING)
+              + L"   ·   解包 / 注入 / 汉化一站式工具";
+    head->Controls->AddRange(gcnew array<Control^>{ t, v });
 
     txtHomeGuide = gcnew TextBox();
-    txtHomeGuide->Location = Drawing::Point(24, 116);
-    txtHomeGuide->Size = Drawing::Size(700, 380);
+    txtHomeGuide->Location = Drawing::Point(28, 124);
+    txtHomeGuide->Size = Drawing::Size(704, 420);
     txtHomeGuide->Multiline = true;
     txtHomeGuide->ScrollBars = ScrollBars::Vertical;
     txtHomeGuide->ReadOnly = true;
+    txtHomeGuide->BorderStyle = BorderStyle::None;
+    txtHomeGuide->BackColor = C_PANEL;
+    txtHomeGuide->Font = F_DEF;
+    txtHomeGuide->ForeColor = C_TEXT;
     txtHomeGuide->Text = L"快速上手：\n\n"
         L"1. 游戏管理：登记游戏别名与资源包路径，方便后续用别名引用。\n"
         L"2. 解包（Unpack）：把游戏的 .rpa 资源包解出来，得到可改的目录。\n"
@@ -203,149 +353,148 @@ void MainForm::BuildHome()
         L"也可查看同目录下的 patcher.log。";
 
     Button^ b = gcnew Button();
-    b->Location = Drawing::Point(24, 512); b->Size = Drawing::Size(180, 36);
+    b->Location = Drawing::Point(28, 560); b->Size = Drawing::Size(170, 38);
     b->Text = L"开始使用 →";
+    StyleBtn(b, true);
     b->Click += gcnew EventHandler(this, &MainForm::btnNavGame_Click);
 
-    pnlHome->Controls->AddRange(gcnew array<Control^>{ t, v, txtHomeGuide, b });
+    pnlHome->Controls->AddRange(gcnew array<Control^>{ head, txtHomeGuide, b });
 }
 
 /* ===================== 游戏管理（所有实际操作） ===================== */
 void MainForm::BuildGame()
 {
     pnlGame = gcnew Panel();
-    pnlGame->Location = Drawing::Point(156, 8);
-    pnlGame->Size = Drawing::Size(766, 724);
+    pnlGame->Location = Drawing::Point(176, 8);
+    pnlGame->Size = Drawing::Size(760, 724);
     pnlGame->AutoScroll = true;
+    pnlGame->BackColor = Drawing::Color::White;
 
     int y = 12;
 
     // ============ 游戏管理 ============
-    GroupBox^ gbGame = gcnew GroupBox();
-    gbGame->Text = L"游戏管理 (别名登记表)";
-    gbGame->Location = Drawing::Point(12, y); gbGame->Size = Drawing::Size(736, 100);
-    txtAlias = gcnew TextBox();       txtAlias->Location = Drawing::Point(12, 22);   txtAlias->Size = Drawing::Size(110, 23);
-    txtGamePath = gcnew TextBox();    txtGamePath->Location = Drawing::Point(130, 22); txtGamePath->Size = Drawing::Size(360, 23);
-    btnBrowseGame = gcnew Button();   btnBrowseGame->Location = Drawing::Point(495, 20); btnBrowseGame->Size = Drawing::Size(60, 25); btnBrowseGame->Text = L"浏览";
-    btnAddGame = gcnew Button();      btnAddGame->Location = Drawing::Point(560, 20); btnAddGame->Size = Drawing::Size(80, 25); btnAddGame->Text = L"添加";
-    btnRemoveGame = gcnew Button();   btnRemoveGame->Location = Drawing::Point(645, 20); btnRemoveGame->Size = Drawing::Size(80, 25); btnRemoveGame->Text = L"删除";
-    lstGames = gcnew ListBox();       lstGames->Location = Drawing::Point(12, 52); lstGames->Size = Drawing::Size(610, 42);
-    btnRefreshGames = gcnew Button(); btnRefreshGames->Location = Drawing::Point(630, 52); btnRefreshGames->Size = Drawing::Size(95, 38); btnRefreshGames->Text = L"刷新列表";
+    GroupBox^ gbGame = MakeGroup(L"游戏管理 (别名登记表)", 12, y, 736, 104);
+    txtAlias = gcnew TextBox();       txtAlias->Location = Drawing::Point(14, 26);   txtAlias->Size = Drawing::Size(110, 23); txtAlias->Font = F_DEF;
+    txtGamePath = gcnew TextBox();    txtGamePath->Location = Drawing::Point(132, 26); txtGamePath->Size = Drawing::Size(346, 23); txtGamePath->Font = F_DEF;
+    btnBrowseGame = gcnew Button();   btnBrowseGame->Location = Drawing::Point(483, 24); btnBrowseGame->Size = Drawing::Size(60, 25); btnBrowseGame->Text = L"浏览";
+    btnAddGame = gcnew Button();      btnAddGame->Location = Drawing::Point(548, 24); btnAddGame->Size = Drawing::Size(80, 25); btnAddGame->Text = L"添加";
+    btnRemoveGame = gcnew Button();   btnRemoveGame->Location = Drawing::Point(633, 24); btnRemoveGame->Size = Drawing::Size(90, 25); btnRemoveGame->Text = L"删除";
+    lstGames = gcnew ListBox();       lstGames->Location = Drawing::Point(14, 56); lstGames->Size = Drawing::Size(620, 42); lstGames->Font = F_DEF;
+    btnRefreshGames = gcnew Button(); btnRefreshGames->Location = Drawing::Point(638, 56); btnRefreshGames->Size = Drawing::Size(85, 38); btnRefreshGames->Text = L"刷新列表";
     gbGame->Controls->AddRange(gcnew array<Control^>{ txtAlias, txtGamePath, btnBrowseGame, btnAddGame, btnRemoveGame, lstGames, btnRefreshGames });
     pnlGame->Controls->Add(gbGame);
-
+    StyleBtn(btnBrowseGame, false); StyleBtn(btnAddGame, true); StyleBtn(btnRemoveGame, false); StyleBtn(btnRefreshGames, false);
     btnBrowseGame->Click += gcnew EventHandler(this, &MainForm::btnBrowseGame_Click);
     btnAddGame->Click    += gcnew EventHandler(this, &MainForm::btnAddGame_Click);
     btnRemoveGame->Click += gcnew EventHandler(this, &MainForm::btnRemoveGame_Click);
     btnRefreshGames->Click += gcnew EventHandler(this, &MainForm::btnRefreshGames_Click);
 
-    y += 112;
+    y += 116;
 
     // ============ 解包 ============
-    GroupBox^ gbU = gcnew GroupBox();
-    gbU->Text = L"解包 (Unpack)";
-    gbU->Location = Drawing::Point(12, y); gbU->Size = Drawing::Size(736, 64);
-    txtUnpackIn = gcnew TextBox();    txtUnpackIn->Location = Drawing::Point(12, 22); txtUnpackIn->Size = Drawing::Size(300, 23);
-    btnBrowseUnpackIn = gcnew Button(); btnBrowseUnpackIn->Location = Drawing::Point(317, 20); btnBrowseUnpackIn->Size = Drawing::Size(60, 25); btnBrowseUnpackIn->Text = L"浏览";
-    txtUnpackOut = gcnew TextBox();   txtUnpackOut->Location = Drawing::Point(382, 22); txtUnpackOut->Size = Drawing::Size(220, 23);
-    btnBrowseUnpackOut = gcnew Button(); btnBrowseUnpackOut->Location = Drawing::Point(607, 20); btnBrowseUnpackOut->Size = Drawing::Size(60, 25); btnBrowseUnpackOut->Text = L"目录";
-    btnUnpack = gcnew Button();       btnUnpack->Location = Drawing::Point(670, 20); btnUnpack->Size = Drawing::Size(58, 25); btnUnpack->Text = L"执行";
+    GroupBox^ gbU = MakeGroup(L"解包 (Unpack)", 12, y, 736, 66);
+    txtUnpackIn = gcnew TextBox();    txtUnpackIn->Location = Drawing::Point(14, 28); txtUnpackIn->Size = Drawing::Size(300, 23); txtUnpackIn->Font = F_DEF;
+    btnBrowseUnpackIn = gcnew Button(); btnBrowseUnpackIn->Location = Drawing::Point(319, 26); btnBrowseUnpackIn->Size = Drawing::Size(60, 25); btnBrowseUnpackIn->Text = L"浏览";
+    txtUnpackOut = gcnew TextBox();   txtUnpackOut->Location = Drawing::Point(384, 28); txtUnpackOut->Size = Drawing::Size(212, 23); txtUnpackOut->Font = F_DEF;
+    btnBrowseUnpackOut = gcnew Button(); btnBrowseUnpackOut->Location = Drawing::Point(601, 26); btnBrowseUnpackOut->Size = Drawing::Size(60, 25); btnBrowseUnpackOut->Text = L"目录";
+    btnUnpack = gcnew Button();       btnUnpack->Location = Drawing::Point(666, 26); btnUnpack->Size = Drawing::Size(60, 25); btnUnpack->Text = L"执行";
     gbU->Controls->AddRange(gcnew array<Control^>{ txtUnpackIn, btnBrowseUnpackIn, txtUnpackOut, btnBrowseUnpackOut, btnUnpack });
     pnlGame->Controls->Add(gbU);
+    StyleBtn(btnBrowseUnpackIn, false); StyleBtn(btnBrowseUnpackOut, false); StyleBtn(btnUnpack, true);
     btnBrowseUnpackIn->Click += gcnew EventHandler(this, &MainForm::btnBrowseUnpackIn_Click);
     btnBrowseUnpackOut->Click += gcnew EventHandler(this, &MainForm::btnBrowseUnpackOut_Click);
     btnUnpack->Click += gcnew EventHandler(this, &MainForm::btnUnpack_Click);
 
-    y += 76;
+    y += 78;
 
     // ============ 注入（build） ============
-    GroupBox^ gbB = gcnew GroupBox();
-    gbB->Text = L"注入 (Build：解包→合并mod→重打包，自动写来源声明)";
-    gbB->Location = Drawing::Point(12, y); gbB->Size = Drawing::Size(736, 90);
-    txtBuildIn = gcnew TextBox();    txtBuildIn->Location = Drawing::Point(12, 20); txtBuildIn->Size = Drawing::Size(300, 23);
-    btnBrowseBuildIn = gcnew Button(); btnBrowseBuildIn->Location = Drawing::Point(317, 18); btnBrowseBuildIn->Size = Drawing::Size(60, 25); btnBrowseBuildIn->Text = L"浏览";
-    txtModDir = gcnew TextBox();     txtModDir->Location = Drawing::Point(382, 20); txtModDir->Size = Drawing::Size(180, 23);
-    btnBrowseMod = gcnew Button();   btnBrowseMod->Location = Drawing::Point(567, 18); btnBrowseMod->Size = Drawing::Size(60, 25); btnBrowseMod->Text = L"目录";
-    txtBuildOut = gcnew TextBox();   txtBuildOut->Location = Drawing::Point(12, 50); txtBuildOut->Size = Drawing::Size(300, 23);
-    btnBrowseBuildOut = gcnew Button(); btnBrowseBuildOut->Location = Drawing::Point(317, 48); btnBrowseBuildOut->Size = Drawing::Size(60, 25); btnBrowseBuildOut->Text = L"浏览";
-    btnBuild = gcnew Button();       btnBuild->Location = Drawing::Point(382, 48); btnBuild->Size = Drawing::Size(120, 25); btnBuild->Text = L"执行注入";
+    GroupBox^ gbB = MakeGroup(L"注入 (Build：解包→合并mod→重打包，自动写来源声明)", 12, y, 736, 92);
+    txtBuildIn = gcnew TextBox();    txtBuildIn->Location = Drawing::Point(14, 26); txtBuildIn->Size = Drawing::Size(300, 23); txtBuildIn->Font = F_DEF;
+    btnBrowseBuildIn = gcnew Button(); btnBrowseBuildIn->Location = Drawing::Point(319, 24); btnBrowseBuildIn->Size = Drawing::Size(60, 25); btnBrowseBuildIn->Text = L"浏览";
+    txtModDir = gcnew TextBox();     txtModDir->Location = Drawing::Point(384, 26); txtModDir->Size = Drawing::Size(180, 23); txtModDir->Font = F_DEF;
+    btnBrowseMod = gcnew Button();   btnBrowseMod->Location = Drawing::Point(569, 24); btnBrowseMod->Size = Drawing::Size(60, 25); btnBrowseMod->Text = L"目录";
+    txtBuildOut = gcnew TextBox();   txtBuildOut->Location = Drawing::Point(14, 56); txtBuildOut->Size = Drawing::Size(300, 23); txtBuildOut->Font = F_DEF;
+    btnBrowseBuildOut = gcnew Button(); btnBrowseBuildOut->Location = Drawing::Point(319, 54); btnBrowseBuildOut->Size = Drawing::Size(60, 25); btnBrowseBuildOut->Text = L"浏览";
+    btnBuild = gcnew Button();       btnBuild->Location = Drawing::Point(384, 54); btnBuild->Size = Drawing::Size(120, 25); btnBuild->Text = L"执行注入";
     gbB->Controls->AddRange(gcnew array<Control^>{ txtBuildIn, btnBrowseBuildIn, txtModDir, btnBrowseMod, txtBuildOut, btnBrowseBuildOut, btnBuild });
     pnlGame->Controls->Add(gbB);
+    StyleBtn(btnBrowseBuildIn, false); StyleBtn(btnBrowseMod, false); StyleBtn(btnBrowseBuildOut, false); StyleBtn(btnBuild, true);
     btnBrowseBuildIn->Click += gcnew EventHandler(this, &MainForm::btnBrowseBuildIn_Click);
     btnBrowseMod->Click += gcnew EventHandler(this, &MainForm::btnBrowseMod_Click);
     btnBrowseBuildOut->Click += gcnew EventHandler(this, &MainForm::btnBrowseBuildOut_Click);
     btnBuild->Click += gcnew EventHandler(this, &MainForm::btnBuild_Click);
 
-    y += 102;
+    y += 104;
 
     // ============ 来源声明 ============
-    GroupBox^ gbC = gcnew GroupBox();
-    gbC->Text = L"来源声明 (Credit：给已有包标注开源项目注入/汉化)";
-    gbC->Location = Drawing::Point(12, y); gbC->Size = Drawing::Size(736, 64);
-    txtCreditIn = gcnew TextBox();   txtCreditIn->Location = Drawing::Point(12, 22); txtCreditIn->Size = Drawing::Size(300, 23);
-    btnBrowseCreditIn = gcnew Button(); btnBrowseCreditIn->Location = Drawing::Point(317, 20); btnBrowseCreditIn->Size = Drawing::Size(60, 25); btnBrowseCreditIn->Text = L"浏览";
-    txtCreditOut = gcnew TextBox();  txtCreditOut->Location = Drawing::Point(382, 22); txtCreditOut->Size = Drawing::Size(220, 23);
-    btnBrowseCreditOut = gcnew Button(); btnBrowseCreditOut->Location = Drawing::Point(607, 20); btnBrowseCreditOut->Size = Drawing::Size(60, 25); btnBrowseCreditOut->Text = L"浏览";
-    btnCredit = gcnew Button();      btnCredit->Location = Drawing::Point(670, 20); btnCredit->Size = Drawing::Size(58, 25); btnCredit->Text = L"执行";
+    GroupBox^ gbC = MakeGroup(L"来源声明 (Credit：给已有包标注开源项目注入/汉化)", 12, y, 736, 66);
+    txtCreditIn = gcnew TextBox();   txtCreditIn->Location = Drawing::Point(14, 28); txtCreditIn->Size = Drawing::Size(300, 23); txtCreditIn->Font = F_DEF;
+    btnBrowseCreditIn = gcnew Button(); btnBrowseCreditIn->Location = Drawing::Point(319, 26); btnBrowseCreditIn->Size = Drawing::Size(60, 25); btnBrowseCreditIn->Text = L"浏览";
+    txtCreditOut = gcnew TextBox();  txtCreditOut->Location = Drawing::Point(384, 28); txtCreditOut->Size = Drawing::Size(212, 23); txtCreditOut->Font = F_DEF;
+    btnBrowseCreditOut = gcnew Button(); btnBrowseCreditOut->Location = Drawing::Point(601, 26); btnBrowseCreditOut->Size = Drawing::Size(60, 25); btnBrowseCreditOut->Text = L"浏览";
+    btnCredit = gcnew Button();      btnCredit->Location = Drawing::Point(666, 26); btnCredit->Size = Drawing::Size(60, 25); btnCredit->Text = L"执行";
     gbC->Controls->AddRange(gcnew array<Control^>{ txtCreditIn, btnBrowseCreditIn, txtCreditOut, btnBrowseCreditOut, btnCredit });
     pnlGame->Controls->Add(gbC);
+    StyleBtn(btnBrowseCreditIn, false); StyleBtn(btnBrowseCreditOut, false); StyleBtn(btnCredit, true);
     btnBrowseCreditIn->Click += gcnew EventHandler(this, &MainForm::btnBrowseCreditIn_Click);
     btnBrowseCreditOut->Click += gcnew EventHandler(this, &MainForm::btnBrowseCreditOut_Click);
     btnCredit->Click += gcnew EventHandler(this, &MainForm::btnCredit_Click);
 
-    y += 76;
+    y += 78;
 
     // ============ 导出 ============
-    GroupBox^ gbE = gcnew GroupBox();
-    gbE->Text = L"导出 (Export：目录打包成标准 zip)";
-    gbE->Location = Drawing::Point(12, y); gbE->Size = Drawing::Size(736, 64);
-    txtExportDir = gcnew TextBox();  txtExportDir->Location = Drawing::Point(12, 22); txtExportDir->Size = Drawing::Size(260, 23);
-    btnBrowseExportDir = gcnew Button(); btnBrowseExportDir->Location = Drawing::Point(277, 20); btnBrowseExportDir->Size = Drawing::Size(60, 25); btnBrowseExportDir->Text = L"目录";
-    txtExportOut = gcnew TextBox();  txtExportOut->Location = Drawing::Point(342, 22); txtExportOut->Size = Drawing::Size(220, 23);
-    btnBrowseExportOut = gcnew Button(); btnBrowseExportOut->Location = Drawing::Point(567, 20); btnBrowseExportOut->Size = Drawing::Size(60, 25); btnBrowseExportOut->Text = L"浏览";
-    txtSplit = gcnew TextBox();      txtSplit->Location = Drawing::Point(632, 22); txtSplit->Size = Drawing::Size(60, 23);
-    btnExport = gcnew Button();      btnExport->Location = Drawing::Point(695, 20); btnExport->Size = Drawing::Size(55, 25); btnExport->Text = L"导出";
+    GroupBox^ gbE = MakeGroup(L"导出 (Export：目录打包成标准 zip)", 12, y, 736, 66);
+    txtExportDir = gcnew TextBox();  txtExportDir->Location = Drawing::Point(14, 28); txtExportDir->Size = Drawing::Size(252, 23); txtExportDir->Font = F_DEF;
+    btnBrowseExportDir = gcnew Button(); btnBrowseExportDir->Location = Drawing::Point(271, 26); btnBrowseExportDir->Size = Drawing::Size(60, 25); btnBrowseExportDir->Text = L"目录";
+    txtExportOut = gcnew TextBox();  txtExportOut->Location = Drawing::Point(336, 28); txtExportOut->Size = Drawing::Size(212, 23); txtExportOut->Font = F_DEF;
+    btnBrowseExportOut = gcnew Button(); btnBrowseExportOut->Location = Drawing::Point(553, 26); btnBrowseExportOut->Size = Drawing::Size(60, 25); btnBrowseExportOut->Text = L"浏览";
+    txtSplit = gcnew TextBox();      txtSplit->Location = Drawing::Point(618, 28); txtSplit->Size = Drawing::Size(54, 23); txtSplit->Font = F_DEF; txtSplit->Text = L"0";
+    btnExport = gcnew Button();      btnExport->Location = Drawing::Point(676, 26); btnExport->Size = Drawing::Size(56, 25); btnExport->Text = L"导出";
     gbE->Controls->AddRange(gcnew array<Control^>{ txtExportDir, btnBrowseExportDir, txtExportOut, btnBrowseExportOut, txtSplit, btnExport });
     pnlGame->Controls->Add(gbE);
+    StyleBtn(btnBrowseExportDir, false); StyleBtn(btnBrowseExportOut, false); StyleBtn(btnExport, true);
     btnBrowseExportDir->Click += gcnew EventHandler(this, &MainForm::btnBrowseExportDir_Click);
     btnBrowseExportOut->Click += gcnew EventHandler(this, &MainForm::btnBrowseExportOut_Click);
     btnExport->Click += gcnew EventHandler(this, &MainForm::btnExport_Click);
 
-    y += 76;
+    y += 78;
 
     // ============ 翻译流水线 ============
-    GroupBox^ gbT = gcnew GroupBox();
-    gbT->Text = L"翻译流水线 (提取对话 → AI翻译 → 生成翻译mod)";
-    gbT->Location = Drawing::Point(12, y); gbT->Size = Drawing::Size(736, 110);
-    txtTransDir = gcnew TextBox();    txtTransDir->Location = Drawing::Point(12, 22);  txtTransDir->Size = Drawing::Size(280, 23);
-    btnBrowseTransDir = gcnew Button(); btnBrowseTransDir->Location = Drawing::Point(297, 20); btnBrowseTransDir->Size = Drawing::Size(60, 25); btnBrowseTransDir->Text = L"浏览";
-    txtTransCsv = gcnew TextBox();    txtTransCsv->Location = Drawing::Point(362, 22); txtTransCsv->Size = Drawing::Size(248, 23);
-    btnBrowseTransCsv = gcnew Button(); btnBrowseTransCsv->Location = Drawing::Point(615, 20); btnBrowseTransCsv->Size = Drawing::Size(60, 25); btnBrowseTransCsv->Text = L"浏览";
-    txtTransLang = gcnew TextBox();   txtTransLang->Location = Drawing::Point(12, 52); txtTransLang->Size = Drawing::Size(60, 23); txtTransLang->Text = L"zh";
-    btnTransExtract = gcnew Button(); btnTransExtract->Location = Drawing::Point(82, 50); btnTransExtract->Size = Drawing::Size(110, 25); btnTransExtract->Text = L"提取对话";
-    btnTransAI = gcnew Button();      btnTransAI->Location = Drawing::Point(197, 50); btnTransAI->Size = Drawing::Size(110, 25); btnTransAI->Text = L"AI翻译";
-    btnTransBuild = gcnew Button();   btnTransBuild->Location = Drawing::Point(312, 50); btnTransBuild->Size = Drawing::Size(130, 25); btnTransBuild->Text = L"生成翻译mod";
+    GroupBox^ gbT = MakeGroup(L"翻译流水线 (提取对话 → AI翻译 → 生成翻译mod)", 12, y, 736, 112);
+    txtTransDir = gcnew TextBox();    txtTransDir->Location = Drawing::Point(14, 28);  txtTransDir->Size = Drawing::Size(280, 23); txtTransDir->Font = F_DEF;
+    btnBrowseTransDir = gcnew Button(); btnBrowseTransDir->Location = Drawing::Point(299, 26); btnBrowseTransDir->Size = Drawing::Size(60, 25); btnBrowseTransDir->Text = L"浏览";
+    txtTransCsv = gcnew TextBox();    txtTransCsv->Location = Drawing::Point(364, 28); txtTransCsv->Size = Drawing::Size(246, 23); txtTransCsv->Font = F_DEF;
+    btnBrowseTransCsv = gcnew Button(); btnBrowseTransCsv->Location = Drawing::Point(615, 26); btnBrowseTransCsv->Size = Drawing::Size(60, 25); btnBrowseTransCsv->Text = L"浏览";
+    txtTransLang = gcnew TextBox();   txtTransLang->Location = Drawing::Point(14, 60); txtTransLang->Size = Drawing::Size(60, 23); txtTransLang->Font = F_DEF; txtTransLang->Text = L"zh";
+    btnTransExtract = gcnew Button(); btnTransExtract->Location = Drawing::Point(84, 58); btnTransExtract->Size = Drawing::Size(110, 25); btnTransExtract->Text = L"提取对话";
+    btnTransAI = gcnew Button();      btnTransAI->Location = Drawing::Point(199, 58); btnTransAI->Size = Drawing::Size(110, 25); btnTransAI->Text = L"AI翻译";
+    btnTransBuild = gcnew Button();   btnTransBuild->Location = Drawing::Point(314, 58); btnTransBuild->Size = Drawing::Size(130, 25); btnTransBuild->Text = L"生成翻译mod";
     gbT->Controls->AddRange(gcnew array<Control^>{ txtTransDir, btnBrowseTransDir, txtTransCsv, btnBrowseTransCsv,
         txtTransLang, btnTransExtract, btnTransAI, btnTransBuild });
     pnlGame->Controls->Add(gbT);
+    StyleBtn(btnBrowseTransDir, false); StyleBtn(btnBrowseTransCsv, false);
+    StyleBtn(btnTransExtract, true); StyleBtn(btnTransAI, true); StyleBtn(btnTransBuild, true);
     btnBrowseTransDir->Click += gcnew EventHandler(this, &MainForm::btnBrowseTransDir_Click);
     btnBrowseTransCsv->Click  += gcnew EventHandler(this, &MainForm::btnBrowseTransCsv_Click);
     btnTransExtract->Click    += gcnew EventHandler(this, &MainForm::btnTransExtract_Click);
     btnTransAI->Click         += gcnew EventHandler(this, &MainForm::btnTransAI_Click);
     btnTransBuild->Click      += gcnew EventHandler(this, &MainForm::btnTransBuild_Click);
 
-    y += 122;
+    y += 124;
 
     // ============ 日志 ============
-    GroupBox^ gbLog = gcnew GroupBox();
-    gbLog->Text = L"日志 (详细见 patcher.log)";
-    gbLog->Location = Drawing::Point(12, y); gbLog->Size = Drawing::Size(736, 130);
+    GroupBox^ gbLog = MakeGroup(L"日志 (详细见 patcher.log)", 12, y, 736, 140);
     txtLog = gcnew TextBox();
-    txtLog->Location = Drawing::Point(12, 20); txtLog->Size = Drawing::Size(640, 96);
+    txtLog->Location = Drawing::Point(14, 24); txtLog->Size = Drawing::Size(648, 100);
     txtLog->Multiline = true; txtLog->ScrollBars = ScrollBars::Vertical; txtLog->ReadOnly = true;
-    btnClearLog = gcnew Button(); btnClearLog->Location = Drawing::Point(660, 50); btnClearLog->Size = Drawing::Size(65, 28); btnClearLog->Text = L"清空";
+    txtLog->BorderStyle = BorderStyle::None;
+    txtLog->BackColor = C_CONSOLE_B;
+    txtLog->ForeColor = C_CONSOLE_F;
+    txtLog->Font = F_MONO;
+    btnClearLog = gcnew Button(); btnClearLog->Location = Drawing::Point(668, 54); btnClearLog->Size = Drawing::Size(60, 28); btnClearLog->Text = L"清空";
     gbLog->Controls->AddRange(gcnew array<Control^>{ txtLog, btnClearLog });
     pnlGame->Controls->Add(gbLog);
+    StyleBtn(btnClearLog, false);
     btnClearLog->Click += gcnew EventHandler(this, &MainForm::btnClearLog_Click);
 }
 
@@ -353,63 +502,64 @@ void MainForm::BuildGame()
 void MainForm::BuildSettings()
 {
     pnlSettings = gcnew Panel();
-    pnlSettings->Location = Drawing::Point(156, 8);
-    pnlSettings->Size = Drawing::Size(766, 724);
+    pnlSettings->Location = Drawing::Point(176, 8);
+    pnlSettings->Size = Drawing::Size(760, 724);
     pnlSettings->AutoScroll = true;
+    pnlSettings->BackColor = Drawing::Color::White;
 
     // ---- AI 翻译配置 ----
-    GroupBox^ gbA = gcnew GroupBox();
-    gbA->Text = L"AI 翻译配置（translate ai 使用）";
-    gbA->Location = Drawing::Point(12, 12); gbA->Size = Drawing::Size(720, 150);
-
-    Label^ lBase = gcnew Label();  lBase->Location = Drawing::Point(12, 24);  lBase->Size = Drawing::Size(72, 23);  lBase->Text = L"Base URL";
-    txtAiBase = gcnew TextBox();   txtAiBase->Location = Drawing::Point(92, 22); txtAiBase->Size = Drawing::Size(420, 23);
+    GroupBox^ gbA = MakeGroup(L"AI 翻译配置（translate ai 使用）", 12, 12, 736, 158);
+    Label^ lBase = MakeLabel(L"Base URL", 14, 28, 80, 23, false);
+    txtAiBase = gcnew TextBox();   txtAiBase->Location = Drawing::Point(100, 26); txtAiBase->Size = Drawing::Size(440, 23); txtAiBase->Font = F_DEF;
     txtAiBase->Text = L"https://api.openai.com/v1";
-    Label^ lKey = gcnew Label();   lKey->Location = Drawing::Point(12, 56);  lKey->Size = Drawing::Size(72, 23);  lKey->Text = L"API Key";
-    txtAiKey = gcnew TextBox();    txtAiKey->Location = Drawing::Point(92, 54); txtAiKey->Size = Drawing::Size(420, 23);
+    Label^ lKey = MakeLabel(L"API Key", 14, 60, 80, 23, false);
+    txtAiKey = gcnew TextBox();    txtAiKey->Location = Drawing::Point(100, 58); txtAiKey->Size = Drawing::Size(440, 23); txtAiKey->Font = F_DEF;
     txtAiKey->UseSystemPasswordChar = true;
-    Label^ lModel = gcnew Label(); lModel->Location = Drawing::Point(12, 88); lModel->Size = Drawing::Size(72, 23); lModel->Text = L"模型";
-    txtAiModel = gcnew TextBox();  txtAiModel->Location = Drawing::Point(92, 86); txtAiModel->Size = Drawing::Size(220, 23);
+    Label^ lModel = MakeLabel(L"模型", 14, 92, 80, 23, false);
+    txtAiModel = gcnew TextBox();  txtAiModel->Location = Drawing::Point(100, 90); txtAiModel->Size = Drawing::Size(220, 23); txtAiModel->Font = F_DEF;
     txtAiModel->Text = L"gpt-4o-mini";
-    Label^ lTip = gcnew Label();   lTip->Location = Drawing::Point(12, 118); lTip->Size = Drawing::Size(680, 22);
-    lTip->Text = L"也可通过环境变量 RP_AI_API_KEY / RP_AI_BASE_URL / RP_AI_MODEL 设置；支持任意 OpenAI 兼容服务（DeepSeek、通义等）。";
-    lTip->ForeColor = SystemColors::GrayText;
-
+    Label^ lTip = MakeLabel(L"也可通过环境变量 RP_AI_API_KEY / RP_AI_BASE_URL / RP_AI_MODEL 设置；支持任意 OpenAI 兼容服务（DeepSeek、通义等）。", 14, 124, 700, 28, true);
     gbA->Controls->AddRange(gcnew array<Control^>{ lBase, txtAiBase, lKey, txtAiKey, lModel, txtAiModel, lTip });
     pnlSettings->Controls->Add(gbA);
 
     // ---- 关于 ----
-    GroupBox^ gbAbout = gcnew GroupBox();
-    gbAbout->Text = L"关于";
-    gbAbout->Location = Drawing::Point(12, 178); gbAbout->Size = Drawing::Size(720, 220);
+    GroupBox^ gbAbout = MakeGroup(L"关于", 12, 186, 736, 210);
     lblAbout = gcnew Label();
-    lblAbout->Location = Drawing::Point(12, 24); lblAbout->Size = Drawing::Size(680, 180);
+    lblAbout->Location = Drawing::Point(14, 26); lblAbout->Size = Drawing::Size(700, 150);
+    lblAbout->Font = F_DEF; lblAbout->ForeColor = C_TEXT;
     lblAbout->Text = gcnew String("Ren'Py Patcher  v") + gcnew String(RPATCHER_VERSION_STRING) + L"\n\n"
         L"一个 Ren'Py 游戏资源包处理工具：解包、注入 mod、来源声明、导出，\n"
         L"以及内置对话翻译流水线（提取 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod）。\n\n"
         L"· 所有操作日志：同目录 patcher.log\n"
         L"· 游戏别名表：patcher_games.json（位于程序目录下）\n"
         L"· 底层复用同一套核心 C 库，GUI 与 CLI 行为一致。";
-    gbAbout->Controls->Add(lblAbout);
+    lnkProject = gcnew LinkLabel();
+    lnkProject->Location = Drawing::Point(14, 180); lnkProject->Size = Drawing::Size(400, 22);
+    lnkProject->Text = L"在 GitHub 上查看项目 / 下载更新  →";
+    lnkProject->Font = F_DEF_B;
+    lnkProject->LinkColor = C_ACCENT;
+    lnkProject->ActiveLinkColor = C_ACCENT_D;
+    gbAbout->Controls->AddRange(gcnew array<Control^>{ lblAbout, lnkProject });
     pnlSettings->Controls->Add(gbAbout);
+    lnkProject->LinkClicked += gcnew LinkLabelLinkClickedEventHandler(this, &MainForm::lnkProject_Click);
 
     // ---- 检查更新 ----
-    GroupBox^ gbUpd = gcnew GroupBox();
-    gbUpd->Text = L"检查更新（按构建号比较，自动对比 GitHub 上的最新构建）";
-    gbUpd->Location = Drawing::Point(12, 414); gbUpd->Size = Drawing::Size(720, 118);
+    GroupBox^ gbUpd = MakeGroup(L"检查更新（按构建号比较，自动对比 GitHub 上的最新构建）", 12, 412, 736, 124);
     btnCheckUpdate = gcnew Button();
-    btnCheckUpdate->Location = Drawing::Point(12, 28); btnCheckUpdate->Size = Drawing::Size(120, 30);
+    btnCheckUpdate->Location = Drawing::Point(14, 30); btnCheckUpdate->Size = Drawing::Size(120, 30);
     btnCheckUpdate->Text = L"检查更新";
     lblUpdateStatus = gcnew Label();
-    lblUpdateStatus->Location = Drawing::Point(144, 34); lblUpdateStatus->Size = Drawing::Size(560, 26);
-    lblUpdateStatus->ForeColor = SystemColors::GrayText;
+    lblUpdateStatus->Location = Drawing::Point(146, 36); lblUpdateStatus->Size = Drawing::Size(560, 26);
+    lblUpdateStatus->Font = F_DEF; lblUpdateStatus->ForeColor = C_MUTE;
     lblUpdateStatus->Text = String::Format(L"当前构建号 {0}（将在启动时自动检查更新）", (int)RPATCHER_BUILD_NUM);
     chkUpdateBeta = gcnew CheckBox();
-    chkUpdateBeta->Location = Drawing::Point(12, 62); chkUpdateBeta->Size = Drawing::Size(660, 24);
+    chkUpdateBeta->Location = Drawing::Point(14, 66); chkUpdateBeta->Size = Drawing::Size(680, 24);
+    chkUpdateBeta->Font = F_DEF; chkUpdateBeta->ForeColor = C_TEXT;
     chkUpdateBeta->Text = L"接收测试版更新（不勾选则只提示正式版）";
     chkUpdateBeta->Checked = false;
     gbUpd->Controls->AddRange(gcnew array<Control^>{ btnCheckUpdate, lblUpdateStatus, chkUpdateBeta });
     pnlSettings->Controls->Add(gbUpd);
+    StyleBtn(btnCheckUpdate, true);
     btnCheckUpdate->Click += gcnew EventHandler(this, &MainForm::btnCheckUpdate_Click);
     chkUpdateBeta->CheckedChanged += gcnew EventHandler(this, &MainForm::chkUpdateBeta_CheckedChanged);
 }
@@ -419,6 +569,11 @@ void MainForm::AppendLog(String^ msg)
 {
     txtLog->AppendText(msg + L"\r\n");
     txtLog->ScrollToCaret();
+}
+
+void MainForm::SetStatus(String^ msg, bool)
+{
+    if (statusLabel) statusLabel->Text = msg;
 }
 
 void MainForm::BrowseFile(TextBox^ tb, String^ filter)
@@ -433,6 +588,23 @@ void MainForm::BrowseFolder(TextBox^ tb)
 {
     FolderBrowserDialog^ d = gcnew FolderBrowserDialog();
     if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) tb->Text = d->SelectedPath;
+}
+
+void MainForm::RunOp(OpType type, Button^ btn, String^ opName, String^ a, String^ b, String^ c, String^ d)
+{
+    RunOp(type, btn, opName, a, b, c, d, nullptr, nullptr, nullptr);
+}
+void MainForm::RunOp(OpType type, Button^ btn, String^ opName, String^ a, String^ b, String^ c, String^ d, String^ base, String^ key, String^ model)
+{
+    TaskCtx^ ctx = gcnew TaskCtx();
+    ctx->Type = type; ctx->a = a; ctx->b = b; ctx->c = c; ctx->d = d;
+    ctx->base = base; ctx->key = key; ctx->model = model;
+    ctx->opName = opName; ctx->btn = btn; ctx->ok = false; ctx->rc = 0;
+    if (btn) btn->Enabled = false;
+    _activeBtn = btn;
+    this->UseWaitCursor = true;
+    SetStatus(L"处理中：" + opName + L" …", true);
+    bgTask->RunWorkerAsync(ctx);
 }
 
 void MainForm::RefreshGames()
@@ -482,73 +654,27 @@ void MainForm::btnRefreshGames_Click(Object^, EventArgs^)
 
 void MainForm::btnUnpack_Click(Object^, EventArgs^)
 {
-    try {
-        if (!CheckFile(txtUnpackIn, L"解包-输入")) return;
-        std::string in  = ToUtf8(txtUnpackIn->Text->Trim());
-        std::string out = ToUtf8(txtUnpackOut->Text->Trim());
-        if (out.empty()) out = "out";
-        AppendLog(gcnew String("[解包] 开始: ") + txtUnpackIn->Text->Trim());
-        int rc = rpa_v3_unpack(in.c_str(), out.c_str());
-        if (rc == RP_OK) AppendLog(L"[解包] 完成 ✅");
-        else ReportFail(L"解包", rc);
-    }
-    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
-    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
-    SyncLog();
+    if (!CheckFile(txtUnpackIn, L"解包-输入")) return;
+    RunOp(OpType::Unpack, btnUnpack, L"解包", txtUnpackIn->Text->Trim(), txtUnpackOut->Text->Trim(), nullptr, nullptr);
 }
 
 void MainForm::btnBuild_Click(Object^, EventArgs^)
 {
-    try {
-        if (!CheckFile(txtBuildIn, L"注入-游戏")) return;
-        if (!CheckDir(txtModDir, L"注入-mod目录")) return;
-        std::string game = ToUtf8(txtBuildIn->Text->Trim());
-        std::string mod  = ToUtf8(txtModDir->Text->Trim());
-        std::string out  = ToUtf8(txtBuildOut->Text->Trim());
-        if (out.empty()) out = "patched.rpa";
-        AppendLog(gcnew String("[注入] 开始: ") + txtBuildIn->Text->Trim() + L" + " + txtModDir->Text->Trim());
-        int rc = direct_inject_build(game.c_str(), mod.c_str(), out.c_str());
-        if (rc == RP_OK) AppendLog(L"[注入] 完成 ✅ (已自动写入来源声明)");
-        else ReportFail(L"注入", rc);
-    }
-    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
-    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
-    SyncLog();
+    if (!CheckFile(txtBuildIn, L"注入-游戏")) return;
+    if (!CheckDir(txtModDir, L"注入-mod目录")) return;
+    RunOp(OpType::Build, btnBuild, L"注入", txtBuildIn->Text->Trim(), txtModDir->Text->Trim(), txtBuildOut->Text->Trim(), nullptr);
 }
 
 void MainForm::btnCredit_Click(Object^, EventArgs^)
 {
-    try {
-        if (!CheckFile(txtCreditIn, L"声明-输入")) return;
-        std::string in  = ToUtf8(txtCreditIn->Text->Trim());
-        std::string out = ToUtf8(txtCreditOut->Text->Trim());
-        if (out.empty()) out = "credited.rpa";
-        AppendLog(gcnew String("[声明] 开始: ") + txtCreditIn->Text->Trim());
-        int rc = credit_add_to_rpa(in.c_str(), out.c_str(), in.c_str());
-        if (rc == RP_OK) AppendLog(L"[声明] 完成 ✅");
-        else ReportFail(L"声明", rc);
-    }
-    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
-    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
-    SyncLog();
+    if (!CheckFile(txtCreditIn, L"声明-输入")) return;
+    RunOp(OpType::Credit, btnCredit, L"来源声明", txtCreditIn->Text->Trim(), txtCreditOut->Text->Trim(), nullptr, nullptr);
 }
 
 void MainForm::btnExport_Click(Object^, EventArgs^)
 {
-    try {
-        if (!CheckDir(txtExportDir, L"导出-目录")) return;
-        std::string dir = ToUtf8(txtExportDir->Text->Trim());
-        std::string out = ToUtf8(txtExportOut->Text->Trim());
-        if (out.empty()) out = "patch.zip";
-        size_t split = ParseSize(txtSplit->Text);
-        AppendLog(gcnew String("[导出] 开始: ") + txtExportDir->Text->Trim());
-        int rc = export_dir(dir.c_str(), out.c_str(), split, 1);
-        if (rc == RP_OK) AppendLog(L"[导出] 完成 ✅");
-        else ReportFail(L"导出", rc);
-    }
-    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
-    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
-    SyncLog();
+    if (!CheckDir(txtExportDir, L"导出-目录")) return;
+    RunOp(OpType::Export, btnExport, L"导出", txtExportDir->Text->Trim(), txtExportOut->Text->Trim(), txtSplit->Text->Trim(), nullptr);
 }
 
 void MainForm::btnClearLog_Click(Object^, EventArgs^)
@@ -559,9 +685,7 @@ void MainForm::btnClearLog_Click(Object^, EventArgs^)
 // 浏览按钮
 void MainForm::btnBrowseGame_Click(Object^, EventArgs^)
 {
-    OpenFileDialog^ d = gcnew OpenFileDialog();
-    d->Filter = L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*";
-    if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) txtGamePath->Text = d->FileName;
+    BrowseFile(txtGamePath, L"Ren'Py 资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
 }
 void MainForm::btnBrowseUnpackIn_Click(Object^, EventArgs^)
 {
@@ -617,11 +741,7 @@ void MainForm::SyncLog()
 
 void MainForm::ReportFail(String^ op, int rc)
 {
-    String^ meaning = gcnew String(rp_strerror(rc));
-    String^ detail  = gcnew String(rp_last_error());
-    String^ msg = L"[" + op + L"] 失败：错误码 " + rc.ToString() + L" (" + meaning + L")";
-    if (detail != nullptr && detail->Length > 0) msg += L" | 详情: " + detail;
-    AppendLog(msg);
+    AppendLog(FailMsg(op, rc));
 }
 
 bool MainForm::CheckFile(TextBox^ tb, String^ label)
@@ -640,6 +760,137 @@ bool MainForm::CheckDir(TextBox^ tb, String^ label)
     return true;
 }
 
+// ---- 后台任务：文件操作 ----
+void MainForm::bgTask_DoWork(Object^, DoWorkEventArgs^ e)
+{
+    TaskCtx^ c = (TaskCtx^)e->Argument;
+    c->ok = false; c->rc = 0;
+    try {
+        std::string a = (c->a && c->a->Length) ? ToUtf8(c->a) : std::string();
+        std::string b = (c->b && c->b->Length) ? ToUtf8(c->b) : std::string();
+        std::string cc = (c->c && c->c->Length) ? ToUtf8(c->c) : std::string();
+        std::string d = (c->d && c->d->Length) ? ToUtf8(c->d) : std::string();
+        int rc = 0;
+
+        switch (c->Type) {
+        case OpType::Unpack: {
+            std::string out = b.empty() ? "out" : b;
+            rc = rpa_v3_unpack(a.c_str(), out.c_str());
+            c->msg = L"[解包] 完成 ✅";
+            break;
+        }
+        case OpType::Build: {
+            std::string out = cc.empty() ? "patched.rpa" : cc;
+            rc = direct_inject_build(a.c_str(), b.c_str(), out.c_str());
+            c->msg = L"[注入] 完成 ✅ (已自动写入来源声明)";
+            break;
+        }
+        case OpType::Credit: {
+            std::string out = b.empty() ? "credited.rpa" : b;
+            rc = credit_add_to_rpa(a.c_str(), out.c_str(), a.c_str());
+            c->msg = L"[声明] 完成 ✅";
+            break;
+        }
+        case OpType::Export: {
+            std::string out = b.empty() ? "patch.zip" : b;
+            size_t split = ParseSize(gcnew String(d.c_str()));
+            rc = export_dir(a.c_str(), out.c_str(), split, 1);
+            c->msg = L"[导出] 完成 ✅";
+            break;
+        }
+        case OpType::TransExtract: {
+            std::string out = b.empty() ? "dialogs.json" : b;
+            dialog_entry_t *arr = NULL; size_t cnt = 0;
+            rc = extract_dialogs(a.c_str(), &arr, &cnt);
+            if (rc == RP_OK) {
+                rc = write_dialogs_json(arr, cnt, out.c_str());
+                if (rc == RP_OK) c->msg = String::Format(L"[翻译] 提取完成 ✅ 共 {0} 条", (int)cnt);
+            }
+            if (arr) free_dialog_entries(arr, cnt);
+            break;
+        }
+        case OpType::TransAI: {
+            String^ inS = gcnew String(a.c_str());
+            int dot = inS->LastIndexOf('.');
+            String^ outJson = (dot >= 0) ? inS->Substring(0, dot) + L"_translated.json" : inS + L"_translated.json";
+            std::string outPath = ToUtf8(outJson);
+            dialog_entry_t *arr = NULL; size_t cnt = 0;
+            rc = read_dialogs_json(a.c_str(), &arr, &cnt);
+            if (rc == RP_OK) {
+                const char **srcs = new const char*[cnt];
+                char **tgts = new char*[cnt];
+                for (size_t i = 0; i < cnt; i++) { srcs[i] = arr[i].source; tgts[i] = NULL; }
+                std::string burl  = (c->base && c->base->Length)  ? ToUtf8(c->base)  : std::string();
+                std::string akey  = (c->key  && c->key->Length)   ? ToUtf8(c->key)   : std::string();
+                std::string amodel= (c->model&& c->model->Length) ? ToUtf8(c->model) : std::string();
+                rc = ai_translate_batch(srcs, tgts, cnt, "auto", "Chinese",
+                                        burl.empty()?nullptr:burl.c_str(),
+                                        akey.empty()?nullptr:akey.c_str(),
+                                        amodel.empty()?nullptr:amodel.c_str());
+                if (rc == RP_OK) {
+                    for (size_t i = 0; i < cnt; i++) {
+                        if (tgts[i] && *tgts[i]) { free(arr[i].target); arr[i].target = tgts[i]; }
+                        else free(tgts[i]);
+                    }
+                    write_dialogs_json(arr, cnt, outPath.c_str());
+                    c->msg = L"[翻译] AI 翻译完成 ✅";
+                    c->outPath = outJson;
+                }
+                delete[] srcs; delete[] tgts;
+            }
+            if (arr) free_dialog_entries(arr, cnt);
+            break;
+        }
+        case OpType::TransBuild: {
+            String^ inS = gcnew String(a.c_str());
+            String^ lang = (d.empty() ? L"zh" : gcnew String(d.c_str()));
+            int sp = inS->LastIndexOf('\\'); if (sp < 0) sp = inS->LastIndexOf('/');
+            String^ csvDir = (sp >= 0) ? inS->Substring(0, sp + 1) : L"";
+            String^ modDir = csvDir + L"translation_mod";
+            std::string mdir = ToUtf8(modDir);
+            std::string lang8 = ToUtf8(lang);
+            dialog_entry_t *arr = NULL; size_t cnt = 0;
+            rc = read_dialogs_json(a.c_str(), &arr, &cnt);
+            if (rc == RP_OK) {
+                rc = build_translation_mod(arr, cnt, mdir.c_str(), lang8.c_str());
+                if (rc == RP_OK) c->msg = String::Format(L"[翻译] 生成翻译 mod 完成 ✅ -> {0}tl/{1}/", modDir, lang);
+            }
+            if (arr) free_dialog_entries(arr, cnt);
+            break;
+        }
+        }
+        c->rc = rc;
+        c->ok = (rc == RP_OK);
+    }
+    catch (Exception^ ex) { c->exMsg = ex->Message; }
+    catch (...) { c->exMsg = L"未知底层异常"; }
+    e->Result = c;
+}
+
+void MainForm::bgTask_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^ e)
+{
+    this->UseWaitCursor = false;
+    TaskCtx^ c = (TaskCtx^)e->Result;
+    if (c->btn) c->btn->Enabled = true;
+    _activeBtn = nullptr;
+
+    if (!String::IsNullOrEmpty(c->exMsg)) {
+        AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + c->exMsg);
+        SetStatus(L"异常：" + c->opName, false);
+    } else if (c->ok) {
+        AppendLog(c->msg);
+        SetStatus(L"完成：" + c->opName, false);
+    } else {
+        AppendLog(FailMsg(c->opName, c->rc));
+        SetStatus(L"失败：" + c->opName, false);
+    }
+
+    if (c->Type == OpType::TransAI && c->ok && !String::IsNullOrEmpty(c->outPath)) {
+        txtTransCsv->Text = c->outPath;   // 便于下一步直接「生成翻译mod」
+    }
+    SyncLog();
+}
+
 // ---- 翻译流水线 ----
 
 void MainForm::btnBrowseTransDir_Click(Object^, EventArgs^) { BrowseFolder(txtTransDir); }
@@ -650,100 +901,41 @@ void MainForm::btnBrowseTransCsv_Click(Object^, EventArgs^)
 
 void MainForm::btnTransExtract_Click(Object^, EventArgs^)
 {
-    try {
-        if (!CheckDir(txtTransDir, L"翻译-解包目录")) return;
-        String^ csv = txtTransCsv->Text->Trim();
-        if (String::IsNullOrWhiteSpace(csv)) { AppendLog(L"[翻译] 请先填写 JSON 输出路径"); return; }
-        std::string dir  = ToUtf8(txtTransDir->Text->Trim());
-        std::string out  = ToUtf8(csv);
-        dialog_entry_t *arr = NULL; size_t cnt = 0;
-        AppendLog(L"[翻译] 提取对话: " + csv);
-        int rc = extract_dialogs(dir.c_str(), &arr, &cnt);
-        if (rc == RP_OK) {
-            rc = write_dialogs_json(arr, cnt, out.c_str());
-            if (rc == RP_OK) AppendLog(String::Format(L"[翻译] 提取完成 ✅ 共 {0} 条 -> {1}", (int)cnt, csv));
-            else ReportFail(L"翻译-导出JSON", rc);
-        } else ReportFail(L"翻译-提取", rc);
-        if (arr) free_dialog_entries(arr, cnt);
-    }
-    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
-    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
-    SyncLog();
+    if (!CheckDir(txtTransDir, L"翻译-解包目录")) return;
+    String^ csv = txtTransCsv->Text->Trim();
+    if (String::IsNullOrWhiteSpace(csv)) { AppendLog(L"[翻译] 请先填写 JSON 输出路径"); return; }
+    RunOp(OpType::TransExtract, btnTransExtract, L"提取对话", txtTransDir->Text->Trim(), csv, nullptr, nullptr);
 }
 
 void MainForm::btnTransAI_Click(Object^, EventArgs^)
 {
-    try {
-        if (!CheckFile(txtTransCsv, L"翻译-JSON")) return;
-        String^ csv = txtTransCsv->Text->Trim();
-        int dot = csv->LastIndexOf(L'.');
-        String^ outJson = (dot >= 0) ? csv->Substring(0, dot) + L"_translated.json" : csv + L"_translated.json";
-        std::string inPath  = ToUtf8(csv);
-        std::string outPath = ToUtf8(outJson);
-        std::string base  = ToUtf8(txtAiBase->Text->Trim());
-        std::string key   = ToUtf8(txtAiKey->Text->Trim());
-        std::string model = ToUtf8(txtAiModel->Text->Trim());
-        dialog_entry_t *arr = NULL; size_t cnt = 0;
-        AppendLog(L"[翻译] AI 翻译开始: " + csv);
-        int rc = read_dialogs_json(inPath.c_str(), &arr, &cnt);
-        if (rc != RP_OK) { ReportFail(L"翻译-读JSON", rc); return; }
-        const char **srcs = new const char*[cnt];
-        char **tgts = new char*[cnt];
-        for (size_t i = 0; i < cnt; i++) { srcs[i] = arr[i].source; tgts[i] = NULL; }
-        rc = ai_translate_batch(srcs, tgts, cnt, "auto", "Chinese",
-                                base.empty() ? NULL : base.c_str(),
-                                key.empty() ? NULL : key.c_str(),
-                                model.empty() ? NULL : model.c_str());
-        if (rc == RP_OK) {
-            for (size_t i = 0; i < cnt; i++) {
-                if (tgts[i] && *tgts[i]) { free(arr[i].target); arr[i].target = tgts[i]; }
-                else free(tgts[i]);
-            }
-            write_dialogs_json(arr, cnt, outPath.c_str());
-            AppendLog(L"[翻译] AI 翻译完成 ✅ -> " + outJson);
-            txtTransCsv->Text = outJson;   // 便于下一步直接「生成翻译mod」
-        } else ReportFail(L"翻译-AI", rc);
-        delete[] srcs; delete[] tgts;
-        if (arr) free_dialog_entries(arr, cnt);
-    }
-    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
-    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
-    SyncLog();
+    if (!CheckFile(txtTransCsv, L"翻译-JSON")) return;
+    String^ csv = txtTransCsv->Text->Trim();
+    RunOp(OpType::TransAI, btnTransAI, L"AI翻译", csv, nullptr, nullptr, nullptr,
+          txtAiBase->Text->Trim(), txtAiKey->Text->Trim(), txtAiModel->Text->Trim());
 }
 
 void MainForm::btnTransBuild_Click(Object^, EventArgs^)
 {
-    try {
-        if (!CheckFile(txtTransCsv, L"翻译-JSON")) return;
-        String^ csv  = txtTransCsv->Text->Trim();
-        String^ lang = txtTransLang->Text->Trim();
-        if (String::IsNullOrWhiteSpace(lang)) lang = L"zh";
-        int sp = csv->LastIndexOf(L"\\"); if (sp < 0) sp = csv->LastIndexOf(L"/");
-        String^ csvDir = (sp >= 0) ? csv->Substring(0, sp + 1) : L"";
-        String^ modDir = csvDir + L"translation_mod";
-        std::string inPath = ToUtf8(csv);
-        std::string mdir   = ToUtf8(modDir);
-        std::string lang8  = ToUtf8(lang);
-        dialog_entry_t *arr = NULL; size_t cnt = 0;
-        AppendLog(L"[翻译] 生成翻译 mod: " + modDir);
-        int rc = read_dialogs_json(inPath.c_str(), &arr, &cnt);
-        if (rc != RP_OK) { ReportFail(L"翻译-读JSON", rc); return; }
-        rc = build_translation_mod(arr, cnt, mdir.c_str(), lang8.c_str());
-        if (rc == RP_OK) AppendLog(String::Format(L"[翻译] 生成翻译 mod 完成 ✅ -> {0}tl/{1}/", modDir, lang));
-        else ReportFail(L"翻译-生成mod", rc);
-        if (arr) free_dialog_entries(arr, cnt);
-    }
-    catch (Exception^ e) { AppendLog(L"❌ 异常（已拦截，程序未崩溃）: " + e->Message); }
-    catch (...) { AppendLog(L"❌ 发生未知底层异常（已拦截，程序未崩溃）"); }
-    SyncLog();
+    if (!CheckFile(txtTransCsv, L"翻译-JSON")) return;
+    String^ csv  = txtTransCsv->Text->Trim();
+    String^ lang = txtTransLang->Text->Trim();
+    if (String::IsNullOrWhiteSpace(lang)) lang = L"zh";
+    RunOp(OpType::TransBuild, btnTransBuild, L"生成翻译mod", csv, nullptr, nullptr, lang);
 }
 
+// ---- 设置持久化 ----
 
-/* ===================== 设置持久化 ===================== */
+void MainForm::lnkProject_Click(Object^, LinkLabelLinkClickedEventArgs^)
+{
+    try { System::Diagnostics::Process::Start(L"https://github.com/Zz131417/renpy_patcher"); }
+    catch (...) {}
+}
+
 String^ MainForm::ConfigPath()
 {
     String^ dir = Environment::GetFolderPath(Environment::SpecialFolder::ApplicationData);
-    return System::IO::Path::Combine(dir, L"RenPyPatcher\gui.cfg");
+    return System::IO::Path::Combine(dir, L"RenPyPatcher\\gui.cfg");
 }
 
 void MainForm::LoadConfig()
@@ -821,7 +1013,6 @@ void MainForm::bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^
         lblUpdateStatus->Text = L"检查更新失败（" + r->Error + L"）";
         return;
     }
-    // 是否提示更新：远端是测试版(prerelease)且用户未开启「接收测试版」-> 不提示
     bool showUpdate = r->HasUpdate && (chkUpdateBeta->Checked || !r->Prerelease);
     if (showUpdate) {
         lblUpdateStatus->Text = String::Format(L"发现新版本 v{0}（build {1}，当前 {2}）",

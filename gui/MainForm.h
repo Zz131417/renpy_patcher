@@ -34,10 +34,11 @@ static const int PAGE_GAME     = 0;   // 游戏管理
 static const int PAGE_HOME     = 1;   // 首页
 static const int PAGE_SETTINGS = 2;   // 设置
 
-/// <summary>
-/// 主窗体：模块化导航布局，提供游戏管理/首页/设置三个页面。
-/// 功能与 CLI 一一对应，共用核心 C 实现。
-/// </summary>
+/* 后台任务类型（用于检查更新之外的文件操作，避免界面卡死） */
+public enum class OpType {
+    Unpack, Build, Credit, Export, TransExtract, TransAI, TransBuild
+};
+
 /// <summary>检查更新结果（后台线程 -> UI 线程传递用）</summary>
 public ref class UpdateResult {
 public:
@@ -62,9 +63,11 @@ public:
 private:
     // ---- 导航栏 ----
     Panel^   navBar;
+    Panel^   navHead;
     Button^  btnNavGame;
     Button^  btnNavHome;
     Button^  btnNavSettings;
+    Label^   lblNavVer;
 
     // ---- 三个页面容器 ----
     Panel^   pnlGame;      // 游戏管理（所有实际操作）
@@ -133,11 +136,21 @@ private:
     // ---- 首页 / 设置 的展示控件 ----
     TextBox^  txtHomeGuide;
     Label^    lblAbout;
+    LinkLabel^ lnkProject;
     // ---- 检查更新 ----
     BackgroundWorker^ bgUpdate;
     Button^   btnCheckUpdate;
     Label^    lblUpdateStatus;
     CheckBox^ chkUpdateBeta;   // 接收测试版更新开关
+
+    // ---- 底部状态栏 ----
+    StatusStrip^        statusBar;
+    ToolStripStatusLabel^ statusLabel;
+    ToolStripStatusLabel^ statusVer;
+
+    // ---- 文件操作后台任务 ----
+    BackgroundWorker^ bgTask;
+    Button^   _activeBtn;
 
     // ---- 页面构建 / 切换 ----
     void BuildNav();
@@ -151,6 +164,9 @@ private:
     void RefreshGames();
     void BrowseFile(TextBox^ tb, String^ filter);
     void BrowseFolder(TextBox^ tb);
+    void SetStatus(String^ msg, bool busy);
+    void RunOp(OpType type, Button^ btn, String^ opName, String^ a, String^ b, String^ c, String^ d);
+    void RunOp(OpType type, Button^ btn, String^ opName, String^ a, String^ b, String^ c, String^ d, String^ base, String^ key, String^ model);
 
     // ---- 导航事件 ----
     void btnNavGame_Click(Object^, EventArgs^);
@@ -188,10 +204,15 @@ private:
     void bgUpdate_DoWork(Object^, DoWorkEventArgs^);
     void bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^);
 
+    // ---- 文件操作后台任务 ----
+    void bgTask_DoWork(Object^, DoWorkEventArgs^);
+    void bgTask_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^);
+
     // ---- 设置持久化 ----
     String^ ConfigPath();
     void LoadConfig();
     void SaveConfig();
+    void lnkProject_Click(Object^, LinkLabelLinkClickedEventArgs^);
 
     // ---- 报错显示 / 防崩溃 辅助 ----
     void SyncLog();
