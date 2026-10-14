@@ -31,7 +31,15 @@ execute_process(
 if(NOT RPATCHER_BUILD_COMMIT)
     set(RPATCHER_BUILD_COMMIT "unknown")
 endif()
-set(RPATCHER_VERSION_FULL "${RPATCHER_VERSION_STRING} (${RPATCHER_BUILD_COMMIT})")
+# 构建号：来自 CI（-DRP_BUILD_NUM，例如 GitHub run_number），本地默认 0。
+# 用途：① MSI Product 版本第四段，供 Windows 安装器做升级/降级比较；② 构建溯源。
+if(DEFINED RP_BUILD_NUM)
+    set(RPATCHER_BUILD_NUM ${RP_BUILD_NUM})
+else()
+    set(RPATCHER_BUILD_NUM 0)
+endif()
+
+set(RPATCHER_VERSION_FULL "${RPATCHER_VERSION_STRING} (build ${RPATCHER_BUILD_NUM}, ${RPATCHER_BUILD_COMMIT})")
 
 # 生成 core/version.h
 configure_file(

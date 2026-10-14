@@ -9,6 +9,9 @@
 #define RPATCHER_VERSION_PATCH  @RPATCHER_VERSION_PATCH@
 #define RPATCHER_VERSION_STRING "@RPATCHER_VERSION_STRING@"
 
+/* 构建号（CI 注入，本地默认 0）；用于 MSI 安装器版本比较与构建溯源 */
+#define RPATCHER_BUILD_NUM      @RPATCHER_BUILD_NUM@
+
 /* 完整版本（含构建元数据：git commit） */
 #define RPATCHER_VERSION_FULL   "@RPATCHER_VERSION_FULL@"
 

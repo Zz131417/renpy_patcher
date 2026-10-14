@@ -1,7 +1,7 @@
 name: Build & Package
 
 # 触发：
-#   - push 到 main：自动编译并发布 Release（自动 tag：ci-<时间>-<sha7>，默认预发布）
+#   - push 到 main：自动编译并发布 Release（自动 tag：v<主版本>-beta<字母序号>（构建号递增，A/B/C/.../Z/AA/...），默认预发布）
 #   - workflow_dispatch（手动「Run workflow」）：也可手动一键发版（tag 可自定义，正式/预发布可选）
 #   - push v* 标签：仅做构建验证（tag 仅作「定期备份」用途，不触发发版）
 #   - 对 main 的 PR：仅构建验证
@@ -50,7 +50,7 @@ jobs:
       # zlib 源码已内置在 third_party/zlib，由 CMake add_subdirectory 构建，
       # 无需 vcpkg / 系统 zlib / 网络连接。
       - name: Configure
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${GITHUB_RUN_NUMBER}
 
       - name: Build
         run: cmake --build build --config Release
@@ -114,22 +114,24 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # 版本号：优先读仓库根 VERSION，兜底用 git 描述
+          # 版本号：主版本来自 VERSION，第四段(构建号)用 GITHUB_RUN_NUMBER，供 MSI 升级/降级比较
           $root = (Get-Location).Path
           $verFile = Join-Path $root "VERSION"
           if (Test-Path $verFile) { $ver = (Get-Content $verFile -Raw).Trim() } else { $ver = $null }
           if ([string]::IsNullOrWhiteSpace($ver)) { $ver = (git describe --tags --always).Trim() }
-          # 规范成 x.y.z（去掉可能的 v 前缀）
-          $ver = $ver.TrimStart('v')
-          if ($ver -notmatch '^\d+\.\d+\.\d') { $ver = "1.0.0" }
-          Write-Host "打包版本号: $ver"
+          $ver = $ver.TrimStart('v','V')
+          if ($ver -notmatch '^\d+\.\d+\.\d+$') { $ver = "1.0.0" }
+          $bn = $env:GITHUB_RUN_NUMBER
+          if (-not $bn) { $bn = "0" }
+          $msiVer = "$ver.$bn"
+          Write-Host "打包版本号(含构建号，用于安装器比较): $msiVer"
           Push-Location gui/installer
           $wix = Get-ChildItem "C:\Program Files (x86)" -Directory -Filter "WiX Toolset*" | Select-Object -First 1
           if (-not $wix) { $wix = Get-ChildItem "C:\Program Files" -Directory -Filter "WiX Toolset*" | Select-Object -First 1 }
           $env:PATH += ";$($wix.FullName)\bin"
           New-Item -ItemType Directory -Force obj | Out-Null
           heat dir ../../installer_deploy -gg -sfrag -sreg -scom -suid -srd -cg DeployFiles -dr INSTALLFOLDER -var var.DeploySource -arch x64 -out files.wxs
-          candle -arch x64 "-dVersion=$ver" "-dDeploySource=../../installer_deploy" -ext WixUIExtension product.wxs files.wxs -o obj/
+          candle -arch x64 "-dVersion=$msiVer" "-dDeploySource=../../installer_deploy" -ext WixUIExtension product.wxs files.wxs -o obj/
           light -ext WixUIExtension obj/product.wixobj obj/files.wixobj -o ../../patcher-gui-windows-x64.msi
           if ($LASTEXITCODE -ne 0) { throw "light failed, exit code $LASTEXITCODE" }
           Pop-Location
@@ -170,20 +172,37 @@ jobs:
         id: meta
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ github.event.inputs.release_tag }}" ]; then
-              TAG="${{ github.event.inputs.release_tag }}"
-            else
-              TAG="build-$(date +%Y%m%d-%H%M%S)"
-            fi
-            PRERE="${{ github.event.inputs.prerelease }}"
-          else
-            # push main 自动发版：自动 tag，默认预发布（自动构建产物）
-            TAG="ci-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
-            PRERE="true"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$PRERE" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import os
+          from datetime import datetime
+          out=os.environ['GITHUB_OUTPUT']
+          evt=os.environ.get('GITHUB_EVENT_NAME','')
+          run_num=int(os.environ.get('GITHUB_RUN_NUMBER','0') or 0)
+          ver=open('VERSION').read().strip().lstrip('vV').strip()
+          # 构建号 -> base26 字母（A,B,...,Z,AA,...），作为测试版后缀
+          n=run_num if run_num>0 else 1
+          s=''
+          while True:
+              n,r=divmod(n-1,26)
+              s=chr(65+r)+s
+              if n==0: break
+          if evt=='workflow_dispatch':
+              tag_in=(os.environ.get('INPUT_RELEASE_TAG') or '').strip()
+              pre=(os.environ.get('INPUT_PRERELEASE') or 'true').strip().lower()=='true'
+              if not tag_in:
+                  tag_in="build-%s" % datetime.utcnow().strftime('%Y%m%d-%H%M%S')
+              tag=tag_in
+          else:
+              # push main 自动发测试版：v<主版本>-beta<字母>
+              tag="v%s-beta%s" % (ver, s)
+              pre=True
+          with open(out,'a') as f:
+              f.write("version=%s\n" % ver)
+              f.write("build_num=%d\n" % run_num)
+              f.write("beta_suffix=%s\n" % s)
+              f.write("tag=%s\n" % tag)
+              f.write("prerelease=%s\n" % str(pre).lower())
+          PY
 
       # 先 checkout 拿到 CHANGELOG（此时还没有 artifacts，clean 不会误删任何东西）
       - name: Checkout (读取 CHANGELOG 作为发布说明)
