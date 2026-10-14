@@ -12,39 +12,41 @@ using namespace RenPyPatcherGUI;
 using namespace System::Net;
 using namespace System::ComponentModel;
 
-/* ===================== 主题 ===================== */
-static Drawing::Color C_ACCENT   = Drawing::Color::FromArgb(59, 130, 246);   // blue-500
-static Drawing::Color C_ACCENT_D = Drawing::Color::FromArgb(37, 99, 235);    // hover
-static Drawing::Color C_SIDEBAR  = Drawing::Color::FromArgb(31, 41, 55);     // gray-800
-static Drawing::Color C_SIDEHI   = Drawing::Color::FromArgb(55, 65, 81);     // hover
-static Drawing::Color C_PANEL    = Drawing::Color::FromArgb(243, 244, 246);  // gray-100
-static Drawing::Color C_TEXT     = Drawing::Color::FromArgb(17, 24, 39);
-static Drawing::Color C_MUTE     = Drawing::Color::FromArgb(107, 114, 128);
-static Drawing::Color C_CONSOLE_B = Drawing::Color::FromArgb(28, 30, 38);
-static Drawing::Color C_CONSOLE_F = Drawing::Color::FromArgb(214, 222, 235);
-
-static Drawing::Font^ F_DEF   = gcnew Drawing::Font(L"Microsoft YaHei", 9.5F);
-static Drawing::Font^ F_DEF_B = gcnew Drawing::Font(L"Microsoft YaHei", 9.5F, FontStyle::Bold);
-static Drawing::Font^ F_TITLE = gcnew Drawing::Font(L"Microsoft YaHei", 20F, FontStyle::Bold);
-static Drawing::Font^ F_SUB   = gcnew Drawing::Font(L"Microsoft YaHei", 10F);
-static Drawing::Font^ F_MONO  = gcnew Drawing::Font(L"Consolas", 9.5F);
+/* ===================== 主题（C++/CLI 不允许全局静态托管类型，统一收进静态类 UI） ===================== */
+public ref class UI abstract sealed {
+public:
+    static initonly Drawing::Color ACCENT    = Drawing::Color::FromArgb(59, 130, 246);   // blue-500
+    static initonly Drawing::Color ACCENT_D  = Drawing::Color::FromArgb(37, 99, 235);    // hover
+    static initonly Drawing::Color SIDEBAR   = Drawing::Color::FromArgb(31, 41, 55);     // gray-800
+    static initonly Drawing::Color SIDEHI    = Drawing::Color::FromArgb(55, 65, 81);     // hover
+    static initonly Drawing::Color PANEL     = Drawing::Color::FromArgb(243, 244, 246);  // gray-100
+    static initonly Drawing::Color TEXT      = Drawing::Color::FromArgb(17, 24, 39);
+    static initonly Drawing::Color MUTE      = Drawing::Color::FromArgb(107, 114, 128);
+    static initonly Drawing::Color CONSOLE_B = Drawing::Color::FromArgb(28, 30, 38);
+    static initonly Drawing::Color CONSOLE_F = Drawing::Color::FromArgb(214, 222, 235);
+    static initonly Drawing::Font^  FONT     = gcnew Drawing::Font(L"Microsoft YaHei", 9.5f);
+    static initonly Drawing::Font^  FONT_B   = gcnew Drawing::Font(L"Microsoft YaHei", 9.5f, FontStyle::Bold);
+    static initonly Drawing::Font^  FONT_TITLE = gcnew Drawing::Font(L"Microsoft YaHei", 20.0f, FontStyle::Bold);
+    static initonly Drawing::Font^  FONT_SUB  = gcnew Drawing::Font(L"Microsoft YaHei", 10.0f);
+    static initonly Drawing::Font^  FONT_MONO = gcnew Drawing::Font(L"Consolas", 9.5f);
+};
 
 /* 统一按钮样式：primary=强调色实心，否则浅灰 */
 static void StyleBtn(Button^ b, bool primary)
 {
     b->FlatStyle = FlatStyle::Flat;
-    b->Font = F_DEF;
+    b->Font = UI::FONT;
     b->UseVisualStyleBackColor = false;
     b->Cursor = Cursors::Hand;
     b->FlatAppearance->BorderSize = 0;
     if (primary) {
-        b->BackColor = C_ACCENT;
+        b->BackColor = UI::ACCENT;
         b->ForeColor = Drawing::Color::White;
-        b->FlatAppearance->MouseOverBackColor = C_ACCENT_D;
-        b->FlatAppearance->MouseDownBackColor = C_ACCENT_D;
+        b->FlatAppearance->MouseOverBackColor = UI::ACCENT_D;
+        b->FlatAppearance->MouseDownBackColor = UI::ACCENT_D;
     } else {
         b->BackColor = Drawing::Color::FromArgb(229, 231, 235);
-        b->ForeColor = C_TEXT;
+        b->ForeColor = UI::TEXT;
         b->FlatAppearance->MouseOverBackColor = Drawing::Color::FromArgb(209, 213, 219);
         b->FlatAppearance->MouseDownBackColor = Drawing::Color::FromArgb(209, 213, 219);
     }
@@ -56,8 +58,8 @@ static GroupBox^ MakeGroup(String^ title, int x, int y, int w, int h)
     GroupBox^ g = gcnew GroupBox();
     g->Location = Drawing::Point(x, y); g->Size = Drawing::Size(w, h);
     g->Text = title;
-    g->Font = F_DEF_B;
-    g->ForeColor = C_ACCENT;
+    g->Font = UI::FONT_B;
+    g->ForeColor = UI::ACCENT;
     g->UseCompatibleTextRendering = true;
     return g;
 }
@@ -67,8 +69,8 @@ static Label^ MakeLabel(String^ text, int x, int y, int w, int h, bool mute)
 {
     Label^ l = gcnew Label();
     l->Location = Drawing::Point(x, y); l->Size = Drawing::Size(w, h);
-    l->Text = text; l->Font = F_DEF;
-    l->ForeColor = mute ? C_MUTE : C_TEXT;
+    l->Text = text; l->Font = UI::FONT;
+    l->ForeColor = mute ? UI::MUTE : UI::TEXT;
     l->TextAlign = Drawing::ContentAlignment::MiddleLeft;
     return l;
 }
@@ -171,7 +173,7 @@ MainForm::MainForm()
     this->ClientSize = Drawing::Size(944, 772);
     this->MinimumSize = Drawing::Size(780, 520);
     this->StartPosition = FormStartPosition::CenterScreen;
-    this->Font = F_DEF;
+    this->Font = UI::FONT;
     this->BackColor = Drawing::Color::White;
     this->DoubleBuffered = true;
 
@@ -188,15 +190,15 @@ MainForm::MainForm()
     // 底部状态栏
     statusBar = gcnew StatusStrip();
     statusBar->Dock = DockStyle::Bottom;
-    statusBar->BackColor = C_PANEL;
+    statusBar->BackColor = UI::PANEL;
     statusLabel = gcnew ToolStripStatusLabel();
     statusLabel->Text = L"就绪";
     statusLabel->Spring = true;
-    statusLabel->Font = F_DEF;
+    statusLabel->Font = UI::FONT;
     statusVer = gcnew ToolStripStatusLabel();
     statusVer->Text = gcnew String("v") + gcnew String(RPATCHER_VERSION_STRING);
     statusVer->BorderSides = ToolStripStatusLabelBorderSides::Left;
-    statusVer->Font = F_DEF;
+    statusVer->Font = UI::FONT;
     statusBar->Items->AddRange(gcnew array<ToolStripItem^>{ statusLabel, statusVer });
 
     this->Controls->Add(navBar);
@@ -229,7 +231,7 @@ void MainForm::BuildNav()
     navBar = gcnew Panel();
     navBar->Location = Drawing::Point(0, 0);
     navBar->Size = Drawing::Size(168, 772);
-    navBar->BackColor = C_SIDEBAR;
+    navBar->BackColor = UI::SIDEBAR;
 
     navHead = gcnew Panel();
     navHead->Location = Drawing::Point(0, 0);
@@ -243,7 +245,7 @@ void MainForm::BuildNav()
     Label^ sub = gcnew Label();
     sub->Location = Drawing::Point(16, 46); sub->Size = Drawing::Size(140, 20);
     sub->Text = L"解包 / 注入 / 汉化";
-    sub->Font = F_SUB;
+    sub->Font = UI::FONT_SUB;
     sub->ForeColor = Drawing::Color::FromArgb(148, 163, 184);
     navHead->Controls->AddRange(gcnew array<Control^>{ app, sub });
 
@@ -259,13 +261,13 @@ void MainForm::BuildNav()
 
     for each (Button^ b in gcnew array<Button^>{ btnNavGame, btnNavHome, btnNavSettings }) {
         b->FlatStyle = FlatStyle::Flat;
-        b->Font = F_DEF_B;
+        b->Font = UI::FONT_B;
         b->UseVisualStyleBackColor = false;
         b->Cursor = Cursors::Hand;
         b->ForeColor = Drawing::Color::FromArgb(203, 213, 225);
-        b->BackColor = C_SIDEBAR;
+        b->BackColor = UI::SIDEBAR;
         b->FlatAppearance->BorderSize = 0;
-        b->FlatAppearance->MouseOverBackColor = C_SIDEHI;
+        b->FlatAppearance->MouseOverBackColor = UI::SIDEHI;
         b->TextAlign = Drawing::ContentAlignment::MiddleLeft;
         b->Padding = System::Windows::Forms::Padding(14, 0, 0, 0);
     }
@@ -273,7 +275,7 @@ void MainForm::BuildNav()
     lblNavVer = gcnew Label();
     lblNavVer->Location = Drawing::Point(14, 740); lblNavVer->Size = Drawing::Size(140, 24);
     lblNavVer->Text = gcnew String("v") + gcnew String(RPATCHER_VERSION_STRING);
-    lblNavVer->Font = F_DEF;
+    lblNavVer->Font = UI::FONT;
     lblNavVer->ForeColor = Drawing::Color::FromArgb(148, 163, 184);
 
     navBar->Controls->AddRange(gcnew array<Control^>{ navHead, btnNavGame, btnNavHome, btnNavSettings, lblNavVer });
@@ -288,8 +290,8 @@ void MainForm::ShowPage(int idx)
     pnlHome->Visible     = (idx == PAGE_HOME);
     pnlSettings->Visible = (idx == PAGE_SETTINGS);
 
-    Drawing::Color sel = C_ACCENT;
-    Drawing::Color nor = C_SIDEBAR;
+    Drawing::Color sel = UI::ACCENT;
+    Drawing::Color nor = UI::SIDEBAR;
     Drawing::Color selF = Drawing::Color::White;
     Drawing::Color norF = Drawing::Color::FromArgb(203, 213, 225);
 
@@ -317,14 +319,14 @@ void MainForm::BuildHome()
     Panel^ head = gcnew Panel();
     head->Location = Drawing::Point(0, 0);
     head->Size = Drawing::Size(760, 104);
-    head->BackColor = C_ACCENT;
+    head->BackColor = UI::ACCENT;
     Label^ t = gcnew Label();
     t->Location = Drawing::Point(28, 20); t->Size = Drawing::Size(700, 40);
-    t->Font = F_TITLE; t->ForeColor = Drawing::Color::White;
+    t->Font = UI::FONT_TITLE; t->ForeColor = Drawing::Color::White;
     t->Text = L"Ren'Py Patcher";
     Label^ v = gcnew Label();
     v->Location = Drawing::Point(28, 64); v->Size = Drawing::Size(700, 26);
-    v->Font = F_SUB; v->ForeColor = Drawing::Color::FromArgb(219, 234, 254);
+    v->Font = UI::FONT_SUB; v->ForeColor = Drawing::Color::FromArgb(219, 234, 254);
     v->Text = gcnew String("版本 ") + gcnew String(RPATCHER_VERSION_STRING)
               + L"   ·   解包 / 注入 / 汉化一站式工具";
     head->Controls->AddRange(gcnew array<Control^>{ t, v });
@@ -336,9 +338,9 @@ void MainForm::BuildHome()
     txtHomeGuide->ScrollBars = ScrollBars::Vertical;
     txtHomeGuide->ReadOnly = true;
     txtHomeGuide->BorderStyle = BorderStyle::None;
-    txtHomeGuide->BackColor = C_PANEL;
-    txtHomeGuide->Font = F_DEF;
-    txtHomeGuide->ForeColor = C_TEXT;
+    txtHomeGuide->BackColor = UI::PANEL;
+    txtHomeGuide->Font = UI::FONT;
+    txtHomeGuide->ForeColor = UI::TEXT;
     txtHomeGuide->Text = L"快速上手：\n\n"
         L"1. 游戏管理：登记游戏别名与资源包路径，方便后续用别名引用。\n"
         L"2. 解包（Unpack）：把游戏的 .rpa 资源包解出来，得到可改的目录。\n"
@@ -374,12 +376,12 @@ void MainForm::BuildGame()
 
     // ============ 游戏管理 ============
     GroupBox^ gbGame = MakeGroup(L"游戏管理 (别名登记表)", 12, y, 736, 104);
-    txtAlias = gcnew TextBox();       txtAlias->Location = Drawing::Point(14, 26);   txtAlias->Size = Drawing::Size(110, 23); txtAlias->Font = F_DEF;
-    txtGamePath = gcnew TextBox();    txtGamePath->Location = Drawing::Point(132, 26); txtGamePath->Size = Drawing::Size(346, 23); txtGamePath->Font = F_DEF;
+    txtAlias = gcnew TextBox();       txtAlias->Location = Drawing::Point(14, 26);   txtAlias->Size = Drawing::Size(110, 23); txtAlias->Font = UI::FONT;
+    txtGamePath = gcnew TextBox();    txtGamePath->Location = Drawing::Point(132, 26); txtGamePath->Size = Drawing::Size(346, 23); txtGamePath->Font = UI::FONT;
     btnBrowseGame = gcnew Button();   btnBrowseGame->Location = Drawing::Point(483, 24); btnBrowseGame->Size = Drawing::Size(60, 25); btnBrowseGame->Text = L"浏览";
     btnAddGame = gcnew Button();      btnAddGame->Location = Drawing::Point(548, 24); btnAddGame->Size = Drawing::Size(80, 25); btnAddGame->Text = L"添加";
     btnRemoveGame = gcnew Button();   btnRemoveGame->Location = Drawing::Point(633, 24); btnRemoveGame->Size = Drawing::Size(90, 25); btnRemoveGame->Text = L"删除";
-    lstGames = gcnew ListBox();       lstGames->Location = Drawing::Point(14, 56); lstGames->Size = Drawing::Size(620, 42); lstGames->Font = F_DEF;
+    lstGames = gcnew ListBox();       lstGames->Location = Drawing::Point(14, 56); lstGames->Size = Drawing::Size(620, 42); lstGames->Font = UI::FONT;
     btnRefreshGames = gcnew Button(); btnRefreshGames->Location = Drawing::Point(638, 56); btnRefreshGames->Size = Drawing::Size(85, 38); btnRefreshGames->Text = L"刷新列表";
     gbGame->Controls->AddRange(gcnew array<Control^>{ txtAlias, txtGamePath, btnBrowseGame, btnAddGame, btnRemoveGame, lstGames, btnRefreshGames });
     pnlGame->Controls->Add(gbGame);
@@ -393,9 +395,9 @@ void MainForm::BuildGame()
 
     // ============ 解包 ============
     GroupBox^ gbU = MakeGroup(L"解包 (Unpack)", 12, y, 736, 66);
-    txtUnpackIn = gcnew TextBox();    txtUnpackIn->Location = Drawing::Point(14, 28); txtUnpackIn->Size = Drawing::Size(300, 23); txtUnpackIn->Font = F_DEF;
+    txtUnpackIn = gcnew TextBox();    txtUnpackIn->Location = Drawing::Point(14, 28); txtUnpackIn->Size = Drawing::Size(300, 23); txtUnpackIn->Font = UI::FONT;
     btnBrowseUnpackIn = gcnew Button(); btnBrowseUnpackIn->Location = Drawing::Point(319, 26); btnBrowseUnpackIn->Size = Drawing::Size(60, 25); btnBrowseUnpackIn->Text = L"浏览";
-    txtUnpackOut = gcnew TextBox();   txtUnpackOut->Location = Drawing::Point(384, 28); txtUnpackOut->Size = Drawing::Size(212, 23); txtUnpackOut->Font = F_DEF;
+    txtUnpackOut = gcnew TextBox();   txtUnpackOut->Location = Drawing::Point(384, 28); txtUnpackOut->Size = Drawing::Size(212, 23); txtUnpackOut->Font = UI::FONT;
     btnBrowseUnpackOut = gcnew Button(); btnBrowseUnpackOut->Location = Drawing::Point(601, 26); btnBrowseUnpackOut->Size = Drawing::Size(60, 25); btnBrowseUnpackOut->Text = L"目录";
     btnUnpack = gcnew Button();       btnUnpack->Location = Drawing::Point(666, 26); btnUnpack->Size = Drawing::Size(60, 25); btnUnpack->Text = L"执行";
     gbU->Controls->AddRange(gcnew array<Control^>{ txtUnpackIn, btnBrowseUnpackIn, txtUnpackOut, btnBrowseUnpackOut, btnUnpack });
@@ -409,11 +411,11 @@ void MainForm::BuildGame()
 
     // ============ 注入（build） ============
     GroupBox^ gbB = MakeGroup(L"注入 (Build：解包→合并mod→重打包，自动写来源声明)", 12, y, 736, 92);
-    txtBuildIn = gcnew TextBox();    txtBuildIn->Location = Drawing::Point(14, 26); txtBuildIn->Size = Drawing::Size(300, 23); txtBuildIn->Font = F_DEF;
+    txtBuildIn = gcnew TextBox();    txtBuildIn->Location = Drawing::Point(14, 26); txtBuildIn->Size = Drawing::Size(300, 23); txtBuildIn->Font = UI::FONT;
     btnBrowseBuildIn = gcnew Button(); btnBrowseBuildIn->Location = Drawing::Point(319, 24); btnBrowseBuildIn->Size = Drawing::Size(60, 25); btnBrowseBuildIn->Text = L"浏览";
-    txtModDir = gcnew TextBox();     txtModDir->Location = Drawing::Point(384, 26); txtModDir->Size = Drawing::Size(180, 23); txtModDir->Font = F_DEF;
+    txtModDir = gcnew TextBox();     txtModDir->Location = Drawing::Point(384, 26); txtModDir->Size = Drawing::Size(180, 23); txtModDir->Font = UI::FONT;
     btnBrowseMod = gcnew Button();   btnBrowseMod->Location = Drawing::Point(569, 24); btnBrowseMod->Size = Drawing::Size(60, 25); btnBrowseMod->Text = L"目录";
-    txtBuildOut = gcnew TextBox();   txtBuildOut->Location = Drawing::Point(14, 56); txtBuildOut->Size = Drawing::Size(300, 23); txtBuildOut->Font = F_DEF;
+    txtBuildOut = gcnew TextBox();   txtBuildOut->Location = Drawing::Point(14, 56); txtBuildOut->Size = Drawing::Size(300, 23); txtBuildOut->Font = UI::FONT;
     btnBrowseBuildOut = gcnew Button(); btnBrowseBuildOut->Location = Drawing::Point(319, 54); btnBrowseBuildOut->Size = Drawing::Size(60, 25); btnBrowseBuildOut->Text = L"浏览";
     btnBuild = gcnew Button();       btnBuild->Location = Drawing::Point(384, 54); btnBuild->Size = Drawing::Size(120, 25); btnBuild->Text = L"执行注入";
     gbB->Controls->AddRange(gcnew array<Control^>{ txtBuildIn, btnBrowseBuildIn, txtModDir, btnBrowseMod, txtBuildOut, btnBrowseBuildOut, btnBuild });
@@ -428,9 +430,9 @@ void MainForm::BuildGame()
 
     // ============ 来源声明 ============
     GroupBox^ gbC = MakeGroup(L"来源声明 (Credit：给已有包标注开源项目注入/汉化)", 12, y, 736, 66);
-    txtCreditIn = gcnew TextBox();   txtCreditIn->Location = Drawing::Point(14, 28); txtCreditIn->Size = Drawing::Size(300, 23); txtCreditIn->Font = F_DEF;
+    txtCreditIn = gcnew TextBox();   txtCreditIn->Location = Drawing::Point(14, 28); txtCreditIn->Size = Drawing::Size(300, 23); txtCreditIn->Font = UI::FONT;
     btnBrowseCreditIn = gcnew Button(); btnBrowseCreditIn->Location = Drawing::Point(319, 26); btnBrowseCreditIn->Size = Drawing::Size(60, 25); btnBrowseCreditIn->Text = L"浏览";
-    txtCreditOut = gcnew TextBox();  txtCreditOut->Location = Drawing::Point(384, 28); txtCreditOut->Size = Drawing::Size(212, 23); txtCreditOut->Font = F_DEF;
+    txtCreditOut = gcnew TextBox();  txtCreditOut->Location = Drawing::Point(384, 28); txtCreditOut->Size = Drawing::Size(212, 23); txtCreditOut->Font = UI::FONT;
     btnBrowseCreditOut = gcnew Button(); btnBrowseCreditOut->Location = Drawing::Point(601, 26); btnBrowseCreditOut->Size = Drawing::Size(60, 25); btnBrowseCreditOut->Text = L"浏览";
     btnCredit = gcnew Button();      btnCredit->Location = Drawing::Point(666, 26); btnCredit->Size = Drawing::Size(60, 25); btnCredit->Text = L"执行";
     gbC->Controls->AddRange(gcnew array<Control^>{ txtCreditIn, btnBrowseCreditIn, txtCreditOut, btnBrowseCreditOut, btnCredit });
@@ -444,11 +446,11 @@ void MainForm::BuildGame()
 
     // ============ 导出 ============
     GroupBox^ gbE = MakeGroup(L"导出 (Export：目录打包成标准 zip)", 12, y, 736, 66);
-    txtExportDir = gcnew TextBox();  txtExportDir->Location = Drawing::Point(14, 28); txtExportDir->Size = Drawing::Size(252, 23); txtExportDir->Font = F_DEF;
+    txtExportDir = gcnew TextBox();  txtExportDir->Location = Drawing::Point(14, 28); txtExportDir->Size = Drawing::Size(252, 23); txtExportDir->Font = UI::FONT;
     btnBrowseExportDir = gcnew Button(); btnBrowseExportDir->Location = Drawing::Point(271, 26); btnBrowseExportDir->Size = Drawing::Size(60, 25); btnBrowseExportDir->Text = L"目录";
-    txtExportOut = gcnew TextBox();  txtExportOut->Location = Drawing::Point(336, 28); txtExportOut->Size = Drawing::Size(212, 23); txtExportOut->Font = F_DEF;
+    txtExportOut = gcnew TextBox();  txtExportOut->Location = Drawing::Point(336, 28); txtExportOut->Size = Drawing::Size(212, 23); txtExportOut->Font = UI::FONT;
     btnBrowseExportOut = gcnew Button(); btnBrowseExportOut->Location = Drawing::Point(553, 26); btnBrowseExportOut->Size = Drawing::Size(60, 25); btnBrowseExportOut->Text = L"浏览";
-    txtSplit = gcnew TextBox();      txtSplit->Location = Drawing::Point(618, 28); txtSplit->Size = Drawing::Size(54, 23); txtSplit->Font = F_DEF; txtSplit->Text = L"0";
+    txtSplit = gcnew TextBox();      txtSplit->Location = Drawing::Point(618, 28); txtSplit->Size = Drawing::Size(54, 23); txtSplit->Font = UI::FONT; txtSplit->Text = L"0";
     btnExport = gcnew Button();      btnExport->Location = Drawing::Point(676, 26); btnExport->Size = Drawing::Size(56, 25); btnExport->Text = L"导出";
     gbE->Controls->AddRange(gcnew array<Control^>{ txtExportDir, btnBrowseExportDir, txtExportOut, btnBrowseExportOut, txtSplit, btnExport });
     pnlGame->Controls->Add(gbE);
@@ -461,11 +463,11 @@ void MainForm::BuildGame()
 
     // ============ 翻译流水线 ============
     GroupBox^ gbT = MakeGroup(L"翻译流水线 (提取对话 → AI翻译 → 生成翻译mod)", 12, y, 736, 112);
-    txtTransDir = gcnew TextBox();    txtTransDir->Location = Drawing::Point(14, 28);  txtTransDir->Size = Drawing::Size(280, 23); txtTransDir->Font = F_DEF;
+    txtTransDir = gcnew TextBox();    txtTransDir->Location = Drawing::Point(14, 28);  txtTransDir->Size = Drawing::Size(280, 23); txtTransDir->Font = UI::FONT;
     btnBrowseTransDir = gcnew Button(); btnBrowseTransDir->Location = Drawing::Point(299, 26); btnBrowseTransDir->Size = Drawing::Size(60, 25); btnBrowseTransDir->Text = L"浏览";
-    txtTransCsv = gcnew TextBox();    txtTransCsv->Location = Drawing::Point(364, 28); txtTransCsv->Size = Drawing::Size(246, 23); txtTransCsv->Font = F_DEF;
+    txtTransCsv = gcnew TextBox();    txtTransCsv->Location = Drawing::Point(364, 28); txtTransCsv->Size = Drawing::Size(246, 23); txtTransCsv->Font = UI::FONT;
     btnBrowseTransCsv = gcnew Button(); btnBrowseTransCsv->Location = Drawing::Point(615, 26); btnBrowseTransCsv->Size = Drawing::Size(60, 25); btnBrowseTransCsv->Text = L"浏览";
-    txtTransLang = gcnew TextBox();   txtTransLang->Location = Drawing::Point(14, 60); txtTransLang->Size = Drawing::Size(60, 23); txtTransLang->Font = F_DEF; txtTransLang->Text = L"zh";
+    txtTransLang = gcnew TextBox();   txtTransLang->Location = Drawing::Point(14, 60); txtTransLang->Size = Drawing::Size(60, 23); txtTransLang->Font = UI::FONT; txtTransLang->Text = L"zh";
     btnTransExtract = gcnew Button(); btnTransExtract->Location = Drawing::Point(84, 58); btnTransExtract->Size = Drawing::Size(110, 25); btnTransExtract->Text = L"提取对话";
     btnTransAI = gcnew Button();      btnTransAI->Location = Drawing::Point(199, 58); btnTransAI->Size = Drawing::Size(110, 25); btnTransAI->Text = L"AI翻译";
     btnTransBuild = gcnew Button();   btnTransBuild->Location = Drawing::Point(314, 58); btnTransBuild->Size = Drawing::Size(130, 25); btnTransBuild->Text = L"生成翻译mod";
@@ -488,9 +490,9 @@ void MainForm::BuildGame()
     txtLog->Location = Drawing::Point(14, 24); txtLog->Size = Drawing::Size(648, 100);
     txtLog->Multiline = true; txtLog->ScrollBars = ScrollBars::Vertical; txtLog->ReadOnly = true;
     txtLog->BorderStyle = BorderStyle::None;
-    txtLog->BackColor = C_CONSOLE_B;
-    txtLog->ForeColor = C_CONSOLE_F;
-    txtLog->Font = F_MONO;
+    txtLog->BackColor = UI::CONSOLE_B;
+    txtLog->ForeColor = UI::CONSOLE_F;
+    txtLog->Font = UI::FONT_MONO;
     btnClearLog = gcnew Button(); btnClearLog->Location = Drawing::Point(668, 54); btnClearLog->Size = Drawing::Size(60, 28); btnClearLog->Text = L"清空";
     gbLog->Controls->AddRange(gcnew array<Control^>{ txtLog, btnClearLog });
     pnlGame->Controls->Add(gbLog);
@@ -510,13 +512,13 @@ void MainForm::BuildSettings()
     // ---- AI 翻译配置 ----
     GroupBox^ gbA = MakeGroup(L"AI 翻译配置（translate ai 使用）", 12, 12, 736, 158);
     Label^ lBase = MakeLabel(L"Base URL", 14, 28, 80, 23, false);
-    txtAiBase = gcnew TextBox();   txtAiBase->Location = Drawing::Point(100, 26); txtAiBase->Size = Drawing::Size(440, 23); txtAiBase->Font = F_DEF;
+    txtAiBase = gcnew TextBox();   txtAiBase->Location = Drawing::Point(100, 26); txtAiBase->Size = Drawing::Size(440, 23); txtAiBase->Font = UI::FONT;
     txtAiBase->Text = L"https://api.openai.com/v1";
     Label^ lKey = MakeLabel(L"API Key", 14, 60, 80, 23, false);
-    txtAiKey = gcnew TextBox();    txtAiKey->Location = Drawing::Point(100, 58); txtAiKey->Size = Drawing::Size(440, 23); txtAiKey->Font = F_DEF;
+    txtAiKey = gcnew TextBox();    txtAiKey->Location = Drawing::Point(100, 58); txtAiKey->Size = Drawing::Size(440, 23); txtAiKey->Font = UI::FONT;
     txtAiKey->UseSystemPasswordChar = true;
     Label^ lModel = MakeLabel(L"模型", 14, 92, 80, 23, false);
-    txtAiModel = gcnew TextBox();  txtAiModel->Location = Drawing::Point(100, 90); txtAiModel->Size = Drawing::Size(220, 23); txtAiModel->Font = F_DEF;
+    txtAiModel = gcnew TextBox();  txtAiModel->Location = Drawing::Point(100, 90); txtAiModel->Size = Drawing::Size(220, 23); txtAiModel->Font = UI::FONT;
     txtAiModel->Text = L"gpt-4o-mini";
     Label^ lTip = MakeLabel(L"也可通过环境变量 RP_AI_API_KEY / RP_AI_BASE_URL / RP_AI_MODEL 设置；支持任意 OpenAI 兼容服务（DeepSeek、通义等）。", 14, 124, 700, 28, true);
     gbA->Controls->AddRange(gcnew array<Control^>{ lBase, txtAiBase, lKey, txtAiKey, lModel, txtAiModel, lTip });
@@ -526,7 +528,7 @@ void MainForm::BuildSettings()
     GroupBox^ gbAbout = MakeGroup(L"关于", 12, 186, 736, 210);
     lblAbout = gcnew Label();
     lblAbout->Location = Drawing::Point(14, 26); lblAbout->Size = Drawing::Size(700, 150);
-    lblAbout->Font = F_DEF; lblAbout->ForeColor = C_TEXT;
+    lblAbout->Font = UI::FONT; lblAbout->ForeColor = UI::TEXT;
     lblAbout->Text = gcnew String("Ren'Py Patcher  v") + gcnew String(RPATCHER_VERSION_STRING) + L"\n\n"
         L"一个 Ren'Py 游戏资源包处理工具：解包、注入 mod、来源声明、导出，\n"
         L"以及内置对话翻译流水线（提取 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod）。\n\n"
@@ -536,9 +538,9 @@ void MainForm::BuildSettings()
     lnkProject = gcnew LinkLabel();
     lnkProject->Location = Drawing::Point(14, 180); lnkProject->Size = Drawing::Size(400, 22);
     lnkProject->Text = L"在 GitHub 上查看项目 / 下载更新  →";
-    lnkProject->Font = F_DEF_B;
-    lnkProject->LinkColor = C_ACCENT;
-    lnkProject->ActiveLinkColor = C_ACCENT_D;
+    lnkProject->Font = UI::FONT_B;
+    lnkProject->LinkColor = UI::ACCENT;
+    lnkProject->ActiveLinkColor = UI::ACCENT_D;
     gbAbout->Controls->AddRange(gcnew array<Control^>{ lblAbout, lnkProject });
     pnlSettings->Controls->Add(gbAbout);
     lnkProject->LinkClicked += gcnew LinkLabelLinkClickedEventHandler(this, &MainForm::lnkProject_Click);
@@ -550,11 +552,11 @@ void MainForm::BuildSettings()
     btnCheckUpdate->Text = L"检查更新";
     lblUpdateStatus = gcnew Label();
     lblUpdateStatus->Location = Drawing::Point(146, 36); lblUpdateStatus->Size = Drawing::Size(560, 26);
-    lblUpdateStatus->Font = F_DEF; lblUpdateStatus->ForeColor = C_MUTE;
+    lblUpdateStatus->Font = UI::FONT; lblUpdateStatus->ForeColor = UI::MUTE;
     lblUpdateStatus->Text = String::Format(L"当前构建号 {0}（将在启动时自动检查更新）", (int)RPATCHER_BUILD_NUM);
     chkUpdateBeta = gcnew CheckBox();
     chkUpdateBeta->Location = Drawing::Point(14, 66); chkUpdateBeta->Size = Drawing::Size(680, 24);
-    chkUpdateBeta->Font = F_DEF; chkUpdateBeta->ForeColor = C_TEXT;
+    chkUpdateBeta->Font = UI::FONT; chkUpdateBeta->ForeColor = UI::TEXT;
     chkUpdateBeta->Text = L"接收测试版更新（不勾选则只提示正式版）";
     chkUpdateBeta->Checked = false;
     gbUpd->Controls->AddRange(gcnew array<Control^>{ btnCheckUpdate, lblUpdateStatus, chkUpdateBeta });
