@@ -402,10 +402,11 @@ void MainForm::BuildSettings()
     lblUpdateStatus = gcnew Label();
     lblUpdateStatus->Location = Drawing::Point(144, 34); lblUpdateStatus->Size = Drawing::Size(560, 26);
     lblUpdateStatus->ForeColor = SystemColors::GrayText;
-    lblUpdateStatus->Text = L"当前构建号 " + RPATCHER_BUILD_NUM.ToString() + L"（将在启动时自动检查更新）";
+    lblUpdateStatus->Text = String::Format(L"当前构建号 {0}（将在启动时自动检查更新）", (int)RPATCHER_BUILD_NUM);
     gbUpd->Controls->AddRange(gcnew array<Control^>{ btnCheckUpdate, lblUpdateStatus });
     pnlSettings->Controls->Add(gbUpd);
     btnCheckUpdate->Click += gcnew EventHandler(this, &MainForm::btnCheckUpdate_Click);
+}
 
 /* ===================== 辅助 ===================== */
 void MainForm::AppendLog(String^ msg)
@@ -776,10 +777,7 @@ void MainForm::bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^
         lblUpdateStatus->Text = String::Format(L"发现新版本 v{0}（build {1}，当前 {2}）",
                                                r->Version, r->LatestBuild, r->CurBuild);
         System::Windows::Forms::DialogResult dr = MessageBox::Show(
-            String::Format(L"发现新版本 v{0}（build {1}）
-当前版本 build {2}。
-
-是否前往下载？",
+            String::Format(L"发现新版本 v{0}（build {1}）\n当前版本 build {2}。\n\n是否前往下载？",
                           r->Version, r->LatestBuild, r->CurBuild),
             L"检查更新", MessageBoxButtons::YesNo, MessageBoxIcon::Information);
         if (dr == System::Windows::Forms::DialogResult::Yes && !String::IsNullOrEmpty(r->Url)) {
