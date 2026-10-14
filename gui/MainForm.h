@@ -19,6 +19,9 @@
 #include "translate/rpy_dialog.h"
 #include "translate/ai_translate.h"
 #include "translate/json_io.h"
+#include "util/zip_extract.h"
+#include "util/sfx.h"
+#include "util/resolve_source.h"
 
 namespace RenPyPatcherGUI {
 
@@ -36,7 +39,7 @@ static const int PAGE_SETTINGS = 2;   // 设置
 
 /* 后台任务类型（用于检查更新之外的文件操作，避免界面卡死） */
 public enum class OpType {
-    Unpack, Build, Credit, Export, TransExtract, TransAI, TransBuild
+    Unpack, Build, Credit, Export, TransExtract, TransAI, TransBuild, ExportSfx, ExportLauncher
 };
 
 /// <summary>检查更新结果（后台线程 -> UI 线程传递用）</summary>
@@ -113,6 +116,9 @@ private:
     Button^   btnBrowseExportOut;
     TextBox^  txtSplit;
     Button^   btnExport;
+    TextBox^  txtExeRun;
+    Button^   btnExportSfx;
+    Button^   btnExportLauncher;
 
     // ---- 游戏管理页：翻译流水线 ----
     TextBox^  txtTransDir;
@@ -161,6 +167,8 @@ private:
 
     // ---- 辅助 ----
     void AppendLog(String^ msg);
+    String^ ResolveGameRpa(String^ token);   // .zip 整包 -> 解压定位内部 .rpa
+    String^ FindStub();                       // 查找同目录 sfx_stub.exe
     void RefreshGames();
     void BrowseFile(TextBox^ tb, String^ filter);
     void BrowseFolder(TextBox^ tb);
@@ -181,6 +189,8 @@ private:
     void btnBuild_Click(Object^, EventArgs^);
     void btnCredit_Click(Object^, EventArgs^);
     void btnExport_Click(Object^, EventArgs^);
+    void btnExportSfx_Click(Object^, EventArgs^);
+    void btnExportLauncher_Click(Object^, EventArgs^);
     void btnClearLog_Click(Object^, EventArgs^);
     void btnBrowseGame_Click(Object^, EventArgs^);
     void btnBrowseUnpackIn_Click(Object^, EventArgs^);

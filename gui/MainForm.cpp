@@ -450,21 +450,30 @@ void MainForm::BuildGame()
     y += 78;
 
     // ============ 导出 ============
-    GroupBox^ gbE = MakeGroup(L"导出 (Export：目录打包成标准 zip)", 12, y, 736, 66);
+    GroupBox^ gbE = MakeGroup(L"导出 (Export：目录打包成标准 zip / 自解压 exe)", 12, y, 736, 112);
     txtExportDir = gcnew TextBox();  txtExportDir->Location = Drawing::Point(14, 28); txtExportDir->Size = Drawing::Size(252, 23); txtExportDir->Font = UI::FONT;
     btnBrowseExportDir = gcnew Button(); btnBrowseExportDir->Location = Drawing::Point(271, 26); btnBrowseExportDir->Size = Drawing::Size(60, 25); btnBrowseExportDir->Text = L"目录";
     txtExportOut = gcnew TextBox();  txtExportOut->Location = Drawing::Point(336, 28); txtExportOut->Size = Drawing::Size(212, 23); txtExportOut->Font = UI::FONT;
     btnBrowseExportOut = gcnew Button(); btnBrowseExportOut->Location = Drawing::Point(553, 26); btnBrowseExportOut->Size = Drawing::Size(60, 25); btnBrowseExportOut->Text = L"浏览";
     txtSplit = gcnew TextBox();      txtSplit->Location = Drawing::Point(618, 28); txtSplit->Size = Drawing::Size(54, 23); txtSplit->Font = UI::FONT; txtSplit->Text = L"0";
-    btnExport = gcnew Button();      btnExport->Location = Drawing::Point(676, 26); btnExport->Size = Drawing::Size(56, 25); btnExport->Text = L"导出";
-    gbE->Controls->AddRange(gcnew array<Control^>{ txtExportDir, btnBrowseExportDir, txtExportOut, btnBrowseExportOut, txtSplit, btnExport });
+    btnExport = gcnew Button();      btnExport->Location = Drawing::Point(676, 26); btnExport->Size = Drawing::Size(56, 25); btnExport->Text = L"导出zip";
+    Label^ lRun = MakeLabel(L"启动命令(启动器用)", 14, 60, 110, 23, true);
+    txtExeRun = gcnew TextBox();     txtExeRun->Location = Drawing::Point(132, 58); txtExeRun->Size = Drawing::Size(300, 23); txtExeRun->Font = UI::FONT;
+    txtExeRun->Text = L"game.exe";
+    btnExportSfx = gcnew Button();     btnExportSfx->Location = Drawing::Point(444, 56); btnExportSfx->Size = Drawing::Size(120, 25); btnExportSfx->Text = L"导出自解压exe";
+    btnExportLauncher = gcnew Button(); btnExportLauncher->Location = Drawing::Point(570, 56); btnExportLauncher->Size = Drawing::Size(140, 25); btnExportLauncher->Text = L"导出启动器exe";
+    gbE->Controls->AddRange(gcnew array<Control^>{ txtExportDir, btnBrowseExportDir, txtExportOut, btnBrowseExportOut, txtSplit, btnExport,
+        lRun, txtExeRun, btnExportSfx, btnExportLauncher });
     pnlGame->Controls->Add(gbE);
     StyleBtn(btnBrowseExportDir, false); StyleBtn(btnBrowseExportOut, false); StyleBtn(btnExport, true);
+    StyleBtn(btnExportSfx, true); StyleBtn(btnExportLauncher, true);
     btnBrowseExportDir->Click += gcnew EventHandler(this, &MainForm::btnBrowseExportDir_Click);
     btnBrowseExportOut->Click += gcnew EventHandler(this, &MainForm::btnBrowseExportOut_Click);
     btnExport->Click += gcnew EventHandler(this, &MainForm::btnExport_Click);
+    btnExportSfx->Click += gcnew EventHandler(this, &MainForm::btnExportSfx_Click);
+    btnExportLauncher->Click += gcnew EventHandler(this, &MainForm::btnExportLauncher_Click);
 
-    y += 78;
+    y += 124;
 
     // ============ 翻译流水线 ============
     GroupBox^ gbT = MakeGroup(L"翻译流水线 (提取对话 → AI翻译 → 生成翻译mod)", 12, y, 736, 112);
@@ -614,6 +623,27 @@ void MainForm::RunOp(OpType type, Button^ btn, String^ opName, String^ a, String
     bgTask->RunWorkerAsync(ctx);
 }
 
+String^ MainForm::ResolveGameRpa(String^ token)
+{
+    String^ t = token->Trim();
+    std::string in = ToUtf8(t);
+    if (!is_zip_file(in.c_str())) return t;
+    String^ tmp = System::IO::Path::Combine(System::IO::Path::GetTempPath(),
+                    L"renpy_patcher_gui_" + DateTime::Now.Ticks.ToString());
+    char rpa[2048]; rpa[0] = 0;
+    int rc = resolve_game_source(in.c_str(), ToUtf8(tmp).c_str(), rpa, sizeof(rpa));
+    if (rc == RP_OK && rpa[0]) return gcnew String(rpa);
+    return t;
+}
+
+String^ MainForm::FindStub()
+{
+    String^ dir = System::IO::Path::GetDirectoryName(System::Windows::Forms::Application::ExecutablePath);
+    String^ p = System::IO::Path::Combine(dir, L"sfx_stub.exe");
+    if (System::IO::File::Exists(p)) return p;
+    return nullptr;
+}
+
 void MainForm::RefreshGames()
 {
     lstGames->Items->Clear();
@@ -628,6 +658,13 @@ void MainForm::btnAddGame_Click(Object^, EventArgs^)
         std::string name = ToUtf8(txtAlias->Text->Trim());
         std::string path = ToUtf8(txtGamePath->Text->Trim());
         if (name.empty() || path.empty()) { AppendLog(L"[游戏管理] 别名与路径均不能为空"); return; }
+        if (is_zip_file(path.c_str())) {
+            String^ tmp = System::IO::Path::Combine(System::IO::Path::GetTempPath(), L"rpg_import_" + DateTime::Now.Ticks.ToString());
+            char rpa[2048]; rpa[0] = 0;
+            int zrc = resolve_game_source(path.c_str(), ToUtf8(tmp).c_str(), rpa, sizeof(rpa));
+            if (zrc != RP_OK || rpa[0] == 0) { AppendLog(L"[游戏管理] 压缩包内未找到 .rpa 资源包"); return; }
+            path = std::string(rpa);
+        }
         int rc = game_add(name.c_str(), path.c_str(), "");
         if (rc == RP_OK) { AppendLog(gcnew String("已添加游戏: ") + txtAlias->Text->Trim()); RefreshGames(); }
         else ReportFail(L"游戏管理-添加", rc);
@@ -662,14 +699,16 @@ void MainForm::btnRefreshGames_Click(Object^, EventArgs^)
 void MainForm::btnUnpack_Click(Object^, EventArgs^)
 {
     if (!CheckFile(txtUnpackIn, L"解包-输入")) return;
-    RunOp(OpType::Unpack, btnUnpack, L"解包", txtUnpackIn->Text->Trim(), txtUnpackOut->Text->Trim(), nullptr, nullptr);
+    String^ rpa = ResolveGameRpa(txtUnpackIn->Text->Trim());
+    RunOp(OpType::Unpack, btnUnpack, L"解包", rpa, txtUnpackOut->Text->Trim(), nullptr, nullptr);
 }
 
 void MainForm::btnBuild_Click(Object^, EventArgs^)
 {
     if (!CheckFile(txtBuildIn, L"注入-游戏")) return;
     if (!CheckDir(txtModDir, L"注入-mod目录")) return;
-    RunOp(OpType::Build, btnBuild, L"注入", txtBuildIn->Text->Trim(), txtModDir->Text->Trim(), txtBuildOut->Text->Trim(), nullptr);
+    String^ rpa = ResolveGameRpa(txtBuildIn->Text->Trim());
+    RunOp(OpType::Build, btnBuild, L"注入", rpa, txtModDir->Text->Trim(), txtBuildOut->Text->Trim(), nullptr);
 }
 
 void MainForm::btnCredit_Click(Object^, EventArgs^)
@@ -682,6 +721,22 @@ void MainForm::btnExport_Click(Object^, EventArgs^)
 {
     if (!CheckDir(txtExportDir, L"导出-目录")) return;
     RunOp(OpType::Export, btnExport, L"导出", txtExportDir->Text->Trim(), txtExportOut->Text->Trim(), txtSplit->Text->Trim(), nullptr);
+}
+void MainForm::btnExportSfx_Click(Object^, EventArgs^)
+{
+    if (!CheckDir(txtExportDir, L"导出-目录")) return;
+    String^ out = txtExportOut->Text->Trim();
+    if (String::IsNullOrWhiteSpace(out)) out = L"setup.exe";
+    RunOp(OpType::ExportSfx, btnExportSfx, L"导出自解压exe", txtExportDir->Text->Trim(), out, txtExeRun->Text->Trim(), nullptr);
+}
+void MainForm::btnExportLauncher_Click(Object^, EventArgs^)
+{
+    if (!CheckDir(txtExportDir, L"导出-目录")) return;
+    String^ run = txtExeRun->Text->Trim();
+    if (String::IsNullOrWhiteSpace(run)) { AppendLog(L"[导出] 启动器模式需填写启动命令"); return; }
+    String^ out = txtExportOut->Text->Trim();
+    if (String::IsNullOrWhiteSpace(out)) out = L"setup.exe";
+    RunOp(OpType::ExportLauncher, btnExportLauncher, L"导出启动器exe", txtExportDir->Text->Trim(), out, run, nullptr);
 }
 
 void MainForm::btnClearLog_Click(Object^, EventArgs^)
@@ -846,6 +901,25 @@ void MainForm::bgTask_DoWork(Object^, DoWorkEventArgs^ e)
                 delete[] srcs; delete[] tgts;
             }
             if (arr) free_dialog_entries(arr, cnt);
+            break;
+        }
+        case OpType::ExportSfx: {
+            std::string dir = a.empty() ? "out" : a;
+            std::string out = b.empty() ? "setup.exe" : b;
+            String^ stub = FindStub();
+            std::string stub8 = (stub && stub->Length) ? ToUtf8(stub) : std::string();
+            rc = sfx_build(stub8.empty()?nullptr:stub8.c_str(), dir.c_str(), out.c_str(), nullptr, 1);
+            c->msg = L"[导出] 自解压 exe 完成 ✅";
+            break;
+        }
+        case OpType::ExportLauncher: {
+            std::string dir = a.empty() ? "out" : a;
+            std::string out = b.empty() ? "setup.exe" : b;
+            std::string run = c.empty() ? std::string() : c;
+            String^ stub = FindStub();
+            std::string stub8 = (stub && stub->Length) ? ToUtf8(stub) : std::string();
+            rc = sfx_build(stub8.empty()?nullptr:stub8.c_str(), dir.c_str(), out.c_str(), run.c_str(), 1);
+            c->msg = L"[导出] 启动器 exe 完成 ✅";
             break;
         }
         case OpType::TransBuild: {

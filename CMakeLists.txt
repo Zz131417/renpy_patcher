@@ -66,6 +66,9 @@ set(CORE_SRC
     util/log.c
     util/credit.c
     util/zip.c
+    util/zip_extract.c
+    util/sfx.c
+    util/resolve_source.c
     inject/export/export_module.c
     compress/zlib_wrap.c
     rpa/rpa_v3.c
@@ -87,6 +90,26 @@ target_link_libraries(renpy_core PUBLIC zlibstatic)
 add_executable(patcher cli/main.c)
 target_link_libraries(patcher PRIVATE renpy_core)
 target_include_directories(patcher PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# ===================== 自解压桩（仅 Windows 原生 exe，供 export-exe 使用） =====================
+# 该桩被拼接在「目录 zip」之后，运行时解出内置 zip 并可自动运行 RP_AUTORUN.txt。
+# 非 Windows 跳过（自解压 exe 仅 Windows 可用）。
+if(WIN32)
+    add_executable(sfx_stub tools/sfx_stub.c)
+    target_link_libraries(sfx_stub PRIVATE renpy_core shell32 user32)
+    target_include_directories(sfx_stub PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    set_target_properties(sfx_stub PROPERTIES WIN32_EXECUTABLE TRUE)
+    # 把桩复制到 patcher / patcher_gui 输出目录，便于运行时定位
+    add_custom_command(TARGET sfx_stub POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:sfx_stub> $<TARGET_FILE_DIR:patcher>/sfx_stub.exe)
+    if(TARGET patcher_gui)
+        add_custom_command(TARGET sfx_stub POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:sfx_stub> $<TARGET_FILE_DIR:patcher_gui>/sfx_stub.exe)
+    endif()
+endif()
+# ============================================================================
 
 # ===================== Windows GUI（C++/CLI WinForms） =====================
 # 仅 Windows：复用同一套核心 C 实现（renpy_core 静态库），

@@ -34,6 +34,13 @@
 #include "inject/export/export_module.h"
 #include "translate/translate_cli.h"
 #include "util/log.h"
+#include "util/zip_extract.h"
+#include "util/sfx.h"
+#include "util/resolve_source.h"
+#include "util/dir_walk.h"
+
+/* 前向声明（定义在文件后部，被 cmd_unpack/cmd_inject 提前调用） */
+static const char *resolve_input_rpa(const char *token, char *tmpdir, size_t tn, char *rpa, size_t rn);
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -74,7 +81,9 @@ int cmd_unpack(int argc, char **argv) {
     const char *token = argv[1];
     const char *out   = get_opt(argc, argv, 2, "-o");
     if (!out) out = "out";
-    const char *in = game_resolve(token);
+    char _td[2048], _rpa[2048];
+    const char *in = resolve_input_rpa(token, _td, sizeof _td, _rpa, sizeof _rpa);
+    if (!in) { fprintf(stderr, "无法解析游戏来源（压缩包内未找到 .rpa？）\n"); return 2; }
 
     log_info("开始解包: %s -> %s", in, out);
     plugin_init();
@@ -109,8 +118,12 @@ int cmd_inject(int argc, char **argv, const char *id) {
     plugin_init();
     const inject_module_t *m = inject_module_get(id);
     if (!m) { log_error("未找到注入模块 %s", id); return 2; }
-    if (strcmp(id, "direct") == 0 && argc > 1)
-        argv[1] = (char *)game_resolve(argv[1]);
+    if (strcmp(id, "direct") == 0 && argc > 1) {
+        char _td[2048], _rpa[2048];
+        const char *r = resolve_input_rpa(argv[1], _td, sizeof _td, _rpa, sizeof _rpa);
+        if (r) argv[1] = (char *)r;
+        else { log_error("无法解析游戏来源（压缩包内未找到 .rpa？）"); return 2; }
+    }
     log_info("调用注入模块: %s", id);
     return m->run(argc - 1, argv + 1);
 }
@@ -197,6 +210,112 @@ int cmd_game(int argc, char **argv) {
     return 1;
 }
 
+/* ---------- 平台相关辅助（导入压缩包 / 定位桩） ---------- */
+#ifdef _WIN32
+#include <windows.h>
+static int make_tmp_dir(char *buf, size_t n) {
+    char base[MAX_PATH];
+    if (!GetTempPathA(MAX_PATH, base)) return -1;
+    snprintf(buf, n, "%srenpy_patcher_%u", base, GetCurrentProcessId());
+    return CreateDirectoryA(buf, NULL) ? 0 : -1;
+}
+static void get_exe_dir(char *buf, size_t n) {
+    char self[MAX_PATH];
+    GetModuleFileNameA(NULL, self, MAX_PATH);
+    char drive[MAX_PATH], d[MAX_PATH], fn[MAX_PATH], ex[MAX_PATH];
+    _splitpath(self, drive, d, fn, ex);
+    snprintf(buf, n, "%s%s", drive, d);
+}
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+static int make_tmp_dir(char *buf, size_t n) {
+    snprintf(buf, n, "/tmp/renpy_patcher_%d", (int)getpid());
+    return mkdir(buf, 0700);
+}
+static void get_exe_dir(char *buf, size_t n) { snprintf(buf, n, "."); }
+#endif
+
+/* 把输入（.rpa/别名/整包.zip）归一化为可直接处理的 .rpa 路径。
+ * 若是 zip，解压到 tmpdir 并定位内部 .rpa 写入 rpa 缓冲。返回路径或 NULL。 */
+static const char *resolve_input_rpa(const char *token, char *tmpdir, size_t tn, char *rpa, size_t rn) {
+    const char *resolved = game_resolve(token);
+    if (!is_zip_file(resolved)) return resolved;
+    if (make_tmp_dir(tmpdir, tn) != 0) { log_error("无法创建临时目录用于解压"); return NULL; }
+    int rc = resolve_game_source(token, tmpdir, rpa, rn);
+    if (rc != RP_OK || rpa[0] == '\0') { log_error("压缩包内未找到 .rpa 资源包"); return NULL; }
+    return rpa;
+}
+
+static char g_stub_buf[2048];
+static const char *pick_stub(void) {
+#ifdef _WIN32
+    char d[2048]; get_exe_dir(d, sizeof(d));
+    snprintf(g_stub_buf, sizeof(g_stub_buf), "%s\\sfx_stub.exe", d);
+    FILE *f = fopen(g_stub_buf, "rb");
+    if (f) { fclose(f); return g_stub_buf; }
+#endif
+    return NULL;
+}
+
+/* ---------- 导入 / 导出 exe 子命令 ---------- */
+
+int cmd_import(int argc, char **argv) {
+    if (argc < 2) { usage(argv[0]); return 1; }
+    const char *zip = argv[1];
+    const char *out = get_opt(argc, argv, 2, "-o");
+    if (!out) out = "imported_game";
+    const char *name = get_opt(argc, argv, 2, "--name");
+
+    int cnt = 0;
+    int rc = zip_extract(zip, out, &cnt);
+    if (rc != RP_OK) { fprintf(stderr, "解压游戏压缩包失败，错误码 %d\n", rc); return 3; }
+
+    if (name) {
+        char rpa[2048]; rpa[0] = '\0';
+        file_entry_t *files = NULL; size_t n = 0;
+        if (collect_files(out, &files, &n) == RP_OK) {
+            for (size_t i = 0; i < n; i++) {
+                size_t L = strlen(files[i].full_path);
+                if (L > 4 && strcmp(files[i].full_path + L - 4, ".rpa") == 0) {
+                    snprintf(rpa, sizeof(rpa), "%s", files[i].full_path); break;
+                }
+            }
+            free_files(files, n);
+        }
+        const char *path = rpa[0] ? rpa : out;
+        int g = game_add(name, path, "");
+        if (g != RP_OK) { fprintf(stderr, "登记游戏失败，错误码 %d\n", g); return 4; }
+        printf("已导入并登记游戏 %s -> %s\n", name, path);
+    } else {
+        printf("已解压游戏到 %s（%d 个文件）\n", out, cnt);
+    }
+    return 0;
+}
+
+int cmd_export_exe(int argc, char **argv) {
+    if (argc < 2) { usage(argv[0]); return 1; }
+    const char *dir = game_resolve(argv[1]);
+    const char *out = get_opt(argc, argv, 2, "-o");
+    if (!out) out = "setup.exe";
+    const char *launcher = get_opt(argc, argv, 2, "--launcher");
+    const char *stub_arg = get_opt(argc, argv, 2, "--stub");
+    int compress = 1;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--store")) compress = 0;
+        if (!strcmp(argv[i], "--deflate")) compress = 1;
+    }
+    const char *stub = stub_arg ? stub_arg : pick_stub();
+    int rc = sfx_build(stub, dir, out, launcher, compress);
+    if (rc == RP_ERR_NOTSUP) {
+        fprintf(stderr, "仅 Windows 支持生成 exe（需要 sfx_stub.exe 自解压桩）\n");
+        return 4;
+    }
+    if (rc != RP_OK) { fprintf(stderr, "生成 exe 失败，错误码 %d\n", rc); return 3; }
+    printf("已生成%s -> %s\n", launcher ? "启动器 exe" : "自解压安装包 exe", out);
+    return 0;
+}
+
 /* ---------- 入口 ---------- */
 
 int main(int argc, char **argv) {
@@ -235,6 +354,8 @@ int main(int argc, char **argv) {
     if (!strcmp(cmd, "game"))      return cmd_game(sub_argc, sub_argv);
     if (!strcmp(cmd, "credit"))    return cmd_credit(sub_argc, sub_argv);
     if (!strcmp(cmd, "export"))    return export_run(sub_argc, sub_argv);
+    if (!strcmp(cmd, "import"))     return cmd_import(sub_argc, sub_argv);
+    if (!strcmp(cmd, "export-exe")) return cmd_export_exe(sub_argc, sub_argv);
     if (!strcmp(cmd, "translate")) return cmd_translate(sub_argc, sub_argv);
 
     usage(prog);

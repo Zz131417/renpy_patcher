@@ -18,6 +18,8 @@
 - **可扩展架构**：统一模块注册表（`core/plugin_loader`），新能力（压缩导出 / 翻译后端 / 外部插件）即插即用。
 - **Windows GUI**：C++/CLI + .NET WinForms，复用同一核心库，功能与 CLI 对齐；操作前校验输入、失败在日志框显示「错误码 + 中文含义 + 底层详情」、全局 `try/catch` 防崩溃。
 - **内置更新检查**：GUI 设置页可一键检查更新（按构建号比较），并可选接收测试版通道。
+- **整包导入**：直接吃整个游戏的 `.zip` 压缩包，自动解压并定位内部 `.rpa`（CLI `import` / GUI 游戏登记）。
+- **导出为 exe**：把目录（游戏 / mod）打成自解压安装包，或注入启动命令生成「启动器 exe」（仅 Windows 可生成；纯解压 / 启动器两种模式）。
 
 ## 技术栈
 | 层面 | 选型 |
@@ -130,6 +132,12 @@ patcher credit --text [--game <名>]                  # 仅导出声明文字
 
 # 导出：把目录（解包产物 / mod）打包成标准 zip（可分卷），便于汉化补丁分发
 patcher export <dir> -o <out.zip> [-split 100M] [-store|-deflate]
+
+# 直接导入整个游戏压缩包（自动解压并定位内部 .rpa；可顺手登记别名）
+patcher import <game.zip> -o out_dir [--name 别名]
+
+# 把目录（游戏 / mod）导出为 exe：自解压安装包 或 启动器（仅 Windows 可生成）
+patcher export-exe <dir> -o setup.exe [--launcher "<启动命令>"] [--store|--deflate]
 ```
 
 ## 日志
@@ -157,6 +165,14 @@ patcher build  mygame -m mod/ -o p.rpa
 
 登记表保存在本地（`$RENPY_PATCHER_HOME` 或 `~/.renpy_patcher/games.txt`，Windows 在 `%APPDATA%/renpy_patcher/games.txt`），为纯文本，无需数据库。
 
+如果拿到的是**整个游戏的压缩包**（而非单个 `.rpa`），可直接：
+
+```bash
+patcher import game_pack.zip -o extracted --name mygame   # 解压并自动登记内部 .rpa
+```
+
+`import` 会解压压缩包、在其中找到第一个 `.rpa` 资源包，并把它登记成别名；之后再 `unpack` / `build` 这个别名即可。
+
 ## 来源声明
 
 当你用本工具注入/汉化游戏后，可以给包里写入一段「由 Ren'Py Patcher 开源项目注入/汉化」的声明文字，方便玩家追溯补丁来源：
@@ -181,6 +197,23 @@ patcher export <dir> -o patch.zip -split 100M  # 分卷：生成 .z01 .z02 ... .
 - 产出标准 ZIP，可被系统解压工具 / Python `zipfile` 正常读取。
 - `-split <size>` 按固定字节分卷（支持 K/M/G），按 `cat *.z* out.zip` 顺序拼接即可还原。
 - 底层为自研 `util/zip`（仅依赖 zlib，无第三方库），与项目零运行时依赖理念一致。
+
+### 导出为 exe（自解压 / 启动器）
+
+把目录（游戏 / mod）打包成单个 `.exe`，方便分发给玩家（双击即解压，无需额外解压工具）：
+
+```bash
+# 自解压安装包：双击解压到「同目录/同名(去.exe)」文件夹，并打开该目录
+patcher export-exe game_dir -o setup.exe
+
+# 启动器 exe：解压后自动运行 RP_AUTORUN.txt 里的命令（如启动游戏）
+patcher export-exe game_dir -o launcher.exe --launcher "game.exe"
+```
+
+- 生成逻辑：本项目的 Windows 原生自解压桩 `sfx_stub.exe` + 目录 zip（`util/zip`）拼成单文件；
+  运行时桩解出内置 zip，纯安装包模式弹窗并打开目录，**启动器模式**则自动执行你填的命令。
+- **仅 Windows 可生成 exe**（需要 `sfx_stub.exe`，由 CI 在 Windows 上编译并随 GUI / CLI 附带）。其他平台执行会提示「仅 Windows 支持」。
+- 自解压桩与解压逻辑均复用项目自研 `util/zip_extract`，零第三方依赖。
 
 ## 翻译流水线（对话翻译）
 
@@ -215,6 +248,8 @@ patcher build <游戏.rpa|别名> -m translation_mod -o patched.rpa
 
 - 游戏管理：登记 / 删除 / 列出别名
 - 解包 / 注入（build，自动写来源声明）/ 来源声明（credit）/ 导出（export，可分卷）
+- 解包 / 注入**可直接选整个游戏的 .zip 压缩包**（自动解压定位内部 .rpa）；游戏登记也支持整包导入
+- 导出页新增「导出自解压 exe」「导出启动器 exe」（填启动命令），导出为单文件 exe 便于分发
 - 翻译流水线：提取对话 / AI 翻译 / 生成翻译 mod
 - 检查更新：设置页可一键检查，按构建号与 GitHub 最新构建比较；「接收测试版更新」开关可切换是否提示测试版
 
