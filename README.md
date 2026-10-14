@@ -3,7 +3,8 @@
 > 🌐 English documentation: [README.en.md](README.en.md)
 
 > 📄 **许可证**：本项目采用**非商业许可证**（详见 `LICENSE`）。个人学习、研究、非商业用途可自由使用与修改；**禁止任何商业用途**，商业使用需单独书面授权。
-> ✅ **当前版本 v1.0.0（正式版）**：核心引擎（解包 / 重打包 / 直接注入 / 导出）与 Windows GUI 均已稳定可用。详见 [CHANGELOG.md](CHANGELOG.md)。
+
+> 📌 **版本**：最新正式版 / 测试版见 [Releases](https://github.com/Zz131417/renpy_patcher/releases)；版本号由根目录 [`VERSION`](VERSION) 文件统一管理。完整更新历史见 [CHANGELOG.md](CHANGELOG.md)（本说明文档不随版本号变化，无需每次发版修改）。
 
 面向 Ren'Py 游戏（Galgame / 视觉小说）的**汉化与 Mod 补丁工具**。
 
@@ -13,8 +14,10 @@
 - **RPA-3.0 双向闭环**：解包与重打包字节级兼容 Ren'Py 引擎（索引写在数据之后，头部记录索引偏移）。
 - **直接注入**：把汉化/Mod 资源合并进游戏包后重打包，产出可被真实游戏直接读取的补丁。
 - **热注入（Windows）**：运行时向游戏进程注入 DLL，定位 CPython、激活游戏内 Python 加载 `mod_main.py`，零改文件。
+- **对话翻译流水线**：提取游戏对话 → AI / 人工翻译 → 一键生成 Ren'Py 翻译 mod，免去手工改每个脚本。
 - **可扩展架构**：统一模块注册表（`core/plugin_loader`），新能力（压缩导出 / 翻译后端 / 外部插件）即插即用。
 - **Windows GUI**：C++/CLI + .NET WinForms，复用同一核心库，功能与 CLI 对齐；操作前校验输入、失败在日志框显示「错误码 + 中文含义 + 底层详情」、全局 `try/catch` 防崩溃。
+- **内置更新检查**：GUI 设置页可一键检查更新（按构建号比较），并可选接收测试版通道。
 
 ## 技术栈
 | 层面 | 选型 |
@@ -24,7 +27,7 @@
 | 序列化 | 自研 **pickle_min**：解析 CPython 协议 2/3/4 的 `pickle`，用于读取与重写 Ren'Py 索引 |
 | 资源格式 | **RPA-3.0**：头部 `RPA-3.0` + 8 字节索引偏移 + 4 字节 XOR prefix；索引（pickle）位于数据段之后 |
 | 构建系统 | **CMake ≥ 3.17**（核心静态库 `renpy_core` + CLI `patcher` 可执行 + Windows GUI `patcher_gui`）；zlib 源码内置，无 vcpkg / 系统 zlib |
-| 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译；发版走手动 `workflow_dispatch` 一键编译发布，`v*` 标签仅作定期备份 |
+| 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译；推送 `main` 自动发测试版，手动 `workflow_dispatch` 发正式版 |
 | 热注入（Windows） | DLL 注入（`CreateRemoteThread` + `LoadLibrary`）+ **CPython C-API** 桥（`py_bridge.c` 定位宿主解释器并执行 `mod_main.py`） |
 | 扩展机制 | 统一模块契约（`core/plugin.h`）+ 中央注册表（`core/plugin_loader`） |
 
@@ -33,11 +36,11 @@
 .
 ├── CMakeLists.txt            # 构建定义：renpy_core 静态库 + patcher 可执行 + patcher_gui（Windows GUI）
 ├── VERSION                   # 版本号（语义化版本，单一事实来源）
-├── CHANGELOG.md              # 更新日志
-├── LICENSE                  # 非商业许可证（禁止商业使用）
-├── DESIGN.md                # 架构设计与里程碑说明
+├── CHANGELOG.md              # 更新日志（随发版更新，本 README 不依赖它）
+├── LICENSE                   # 非商业许可证（禁止商业使用）
+├── DESIGN.md                 # 架构设计与里程碑说明
 ├── .github/workflows/
-│   └── build.yml            # CI：Linux/Windows 编译；手动 workflow_dispatch 一键编译发布
+│   └── build.yml            # CI：Linux/Windows 编译；推送 main 自动发测试版 / 手动发正式版
 ├── third_party/
 │   └── zlib/                # 内置 zlib 源码（add_subdirectory 构建，无需 vcpkg / 系统 zlib / 联网）
 ├── core/                    # 统一模块契约与注册表
@@ -66,7 +69,7 @@
 │       └── py_bridge.c/.h   #   定位宿主 CPython 并执行 mod_main.py
 ├── gui/                     # Windows GUI（C++/CLI + .NET WinForms，复用 renpy_core）
 │   ├── Program.cpp          #   托管入口 main()
-│   ├── MainForm.h/.cpp      #   主窗口与事件（含 try/catch 防崩溃、报错显示）
+│   ├── MainForm.h/.cpp      #   主窗口与事件（含 try/catch 防崩溃、报错显示、检查更新）
 ├── cli/
 │   └── main.c               # 命令行入口（子命令分发）
 └── tests/                   # 演示游戏 + 汉化 mod + 验证脚本
@@ -154,7 +157,6 @@ patcher build  mygame -m mod/ -o p.rpa
 
 登记表保存在本地（`$RENPY_PATCHER_HOME` 或 `~/.renpy_patcher/games.txt`，Windows 在 `%APPDATA%/renpy_patcher/games.txt`），为纯文本，无需数据库。
 
-
 ## 来源声明
 
 当你用本工具注入/汉化游戏后，可以给包里写入一段「由 Ren'Py Patcher 开源项目注入/汉化」的声明文字，方便玩家追溯补丁来源：
@@ -164,7 +166,6 @@ patcher build  mygame -m mod/ -o p.rpa
 - **仅导出文字**：`patcher credit --text [--game <名>]` 把声明文字打印到终端，便于复制到其他说明里。
 
 声明内容含项目名、仓库地址、版本、非商业许可证与生成时间（中英文双语）。
-
 
 ## 导出（分发补丁）
 
@@ -181,8 +182,7 @@ patcher export <dir> -o patch.zip -split 100M  # 分卷：生成 .z01 .z02 ... .
 - `-split <size>` 按固定字节分卷（支持 K/M/G），按 `cat *.z* out.zip` 顺序拼接即可还原。
 - 底层为自研 `util/zip`（仅依赖 zlib，无第三方库），与项目零运行时依赖理念一致。
 
-
-## 翻译流水线（M8 / 对话翻译）
+## 翻译流水线（对话翻译）
 
 把游戏对话提取出来统一翻译，再生成 Ren'Py 翻译 mod（无需手工改每个脚本）。流程：
 
@@ -206,7 +206,7 @@ patcher build <游戏.rpa|别名> -m translation_mod -o patched.rpa
 要点：
 - 中间格式为 **JSON**（`file/line/speaker/source/target`），规避 CSV 引号与换行的转义坑。
 - 仅提取 **对话**（say）：说话人+文本、裸对话、多行三引号均可；菜单选项、界面显示语句、赋值与结构行已自动跳过。
-- 菜单、界面文本翻译在后续版本补齐（按"对话优先"路线）。
+- 按「对话优先」路线推进；菜单、界面文本翻译在规划中。
 - Ren'Py 会优先加载 `tl/<lang>/` 下的译文覆盖原文，无需重排索引。
 
 ## GUI 版（Windows / .NET WinForms）
@@ -215,15 +215,18 @@ patcher build <游戏.rpa|别名> -m translation_mod -o patched.rpa
 
 - 游戏管理：登记 / 删除 / 列出别名
 - 解包 / 注入（build，自动写来源声明）/ 来源声明（credit）/ 导出（export，可分卷）
+- 翻译流水线：提取对话 / AI 翻译 / 生成翻译 mod
+- 检查更新：设置页可一键检查，按构建号与 GitHub 最新构建比较；「接收测试版更新」开关可切换是否提示测试版
 
 GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源码形式内置在 `third_party/zlib`，**无需 vcpkg / 系统 zlib / 联网**。
 
-### 稳定性（v1.0.0 重点）
+### 稳定性设计
 - **报错显示**：操作失败时，日志框显示「错误码 + 中文含义 + 底层详情」，例如
   `[解包] 失败：错误码 2 (I/O 错误（文件打开/读取/写入失败）) | 详情: 无法打开文件 xxx`。
 - **防崩溃**：所有按钮事件均包 `try/catch`（含底层异常兜底），遇到异常只写日志不弹系统报错窗。
 - **输入校验**：执行前先检查文件/目录是否存在，避免无效调用。
 - **日志同步**：日志框增量同步 `patcher.log`，启动即载入历史记录。
+- **不卡界面**：文件操作在后台线程执行，界面在长时间任务期间仍可用。
 
 ### 构建 GUI（Windows）
 1. 安装 Visual Studio 2019/2022（「使用 C++ 的桌面开发」+「C++/CLI 支持」+「.NET Framework 4.8 开发工具」）。
@@ -237,36 +240,41 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 
 > 说明：GUI 复用同一核心库；热注入 `agent.dll` 仅在装有 Python 开发包时一并构建，GUI 本身不依赖 Python。
 
+### 检查更新
+- GUI 在启动时自动静默检查一次，发现新版本才弹窗提示；也可在「设置」页手动点「检查更新」。
+- 比较依据：拉取 GitHub `latest` 分支的 `version.json` 中的**构建号**，与本地构建号比较（`latest > 当前` 即视为有新版本）。
+- 「接收测试版更新」开关（默认关）：关闭时只提示正式版；开启后测试版也会提示。开关状态持久化在 `%APPDATA%/RenPyPatcher/gui.cfg`。
 
-## 版本管理
+## 版本与发布
 
-- **单一事实来源**：根目录 `VERSION` 文件（语义化版本，如 `1.0.0`）。
-- **自动生成**：CMake 读取 `VERSION` 并捕获 git 短提交，生成 `core/version.h`（被 `core/plugin.h` 包含），无需手工改版本号。
-- **查看版本**：`patcher --version`（或 `-v`）打印版本号、构建来源 commit 与许可证。
-- **发版方式**：在 GitHub Actions 页面 **手动 Run workflow（workflow_dispatch）** 一键编译并发布 Release；发版 tag 默认自动用 `build-<时间>`，也可手动指定。
-  - `v*` 标签**仅作定期备份**用途：推 `v*` 标签只跑构建验证，不会自动发版。
-- `core/version.h` 为生成文件，已被 `.gitignore` 忽略，请勿手工提交。
+> 本项目的版本号与发布信息集中在少数固定位置管理，本文档**不写死具体版本**，发版时无需改动 README。
 
+- **版本号来源**：根目录 `VERSION` 文件（语义化版本，如 `1.1.0`）。CMake 读取后生成 `core/version.h`（被 `core/plugin.h` 包含），无需手工改版本号。
+- **构建号**：由 CI 自动注入（GitHub 仓库运行序号），用于 MSI 安装包的四段版本号（供安装器做升级/降级比较）以及 GUI 检查更新时的版本比较。本地未接入 CI 时构建号默认为 0。
+- **测试版命名**：自动发版采用 `v<主版本>-beta<字母>` 形式（字母从 `A` 开始依次递增，如 `betaA` / `betaB` / …）；每发布一次对应主版本的正式版后，该主版本下的 beta 计数自动重置回 `A`。
+- **发布方式**：
+  - 推送 `main` 分支 → 自动编译并发布**测试版**（预发布）。
+  - 在 GitHub Actions 页面 **手动 Run workflow（`workflow_dispatch`）** 并指定 tag（如 `v1.1.0`）→ 编译并发布**正式版**（非预发布）。
+- **最新发布 / 产物**：见 [Releases](https://github.com/Zz131417/renpy_patcher/releases)，产物含 Windows MSI 安装包、Windows / Linux 压缩包与 `version.json`。
+- **更新历史**：见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 测试
 见 [`tests/README_test.md`](tests/README_test.md)：包含可直接用 Ren'Py SDK 实测的演示游戏、汉化 mod，以及用 Ren'Py loader 逻辑校验产物的脚本。
 
-本仓库已配置 CI（`build.yml`）：推送 `main` 自动编译验证；正式发版走手动 `workflow_dispatch` 一键编译发布并附各平台产物。
+本仓库已配置 CI（`build.yml`）：推送 `main` 自动编译并发布测试版；正式发版走手动 `workflow_dispatch`。
 
-## 进度 / 路线图
-| 里程碑 | 内容 | 状态 |
-| --- | --- | --- |
-| M1 | RPA-3.0 解包 | ✅ 完成 |
-| M2 | 原样重打包闭环 | ✅ 完成 |
-| M3 | 直接注入（合并 mod → 重打包） | ✅ 完成 |
-| M4 | 热注入代码（Windows 进程注入 + CPython 桥） | ✅ 代码完成（待 Windows 实机验证） |
-| M5 | 导出 / 分卷（标准 zip，自研 util/zip） | ✅ 完成 |
-| GUI | Windows GUI 版（C++/CLI WinForms，与 CLI 功能对齐，CMake 统一构建，防崩溃 + 报错显示） | ✅ 完成（v1.0.0） |
-| M7 | 外部插件 DLL 自动加载（注册表入口已预留） | 🔲 未实现 |
-| M8 | 翻译流水线（对话翻译；菜单/界面文本待补） | ✅ 完成（v1.1.0） |
-| M9 | APK 支持 | 🔲 暂搁置 |
+## 已实现能力
+- RPA-3.0 解包 / 原样重打包闭环
+- 直接注入（解包 → 合并 mod → 重打包，自动写来源声明）
+- 热注入（Windows，运行时进程注入）
+- 来源声明（自动 / 手动 / 仅导出文字）
+- 分卷 ZIP 导出（自研 `util/zip`，仅依赖 zlib）
+- 对话翻译流水线（提取 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod）
+- 游戏别名管理
+- Windows GUI（功能对齐 CLI，含检查更新与测试版通道）
+- 跨平台 CI 编译与自动 / 手动发布
+
+> 能力范围与最新进展以 [CHANGELOG.md](CHANGELOG.md) 为准；菜单、界面文本翻译等按计划推进中。
 
 ## 许可证
-本项目采用**非商业许可证**（详见 [`LICENSE`](LICENSE)）。个人学习、研究、非商业用途可自由使用与修改；
-**禁止任何商业用途**（销售、嵌入商业产品、付费分发等），商业使用须另行书面授权。
-`tests/` 下的演示游戏与汉化 mod 示例同样受此约束。
+本项目采用**非商业许可证**：个人学习、研究、非商业用途可自由使用与修改；**禁止任何商业用途**，商业使用需单独书面授权。详见 [`LICENSE`](LICENSE)。

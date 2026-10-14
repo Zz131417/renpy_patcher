@@ -2,7 +2,7 @@
 
 > 🌐 中文文档：[README.md](README.md)
 > 📄 **License**: This project is released under a **Non-Commercial License** (see [`LICENSE`](LICENSE)). Personal study, research, and non-commercial use are allowed; **commercial use is prohibited** and requires a separate written license.
-> ✅ **Current version v1.0.0 (stable)**: the core engine (unpack / repack / direct injection / export) and the Windows GUI are both stable. See [CHANGELOG.md](CHANGELOG.md).
+> 📌 **Version**: Latest stable / pre-release builds are on [Releases](https://github.com/Zz131417/renpy_patcher/releases); the version number is managed in the root [`VERSION`](VERSION) file. Full history is in [CHANGELOG.md](CHANGELOG.md) (this document does not hard-code a version, so it needs no edits per release).
 
 A **translation / mod patching tool** for Ren'Py games (Galgames / visual novels).
 
@@ -42,6 +42,7 @@ Ren'Py ships game assets inside `.rpa` archives. To translate or mod a game you 
 - **Hot injection (Windows)**: inject a DLL into the running game process at runtime, locate CPython, and activate the game's in-process Python to load `mod_main.py` — zero file modification.
 - **Extensible architecture**: a unified module registry (`core/plugin_loader`) lets new capabilities (compressed export / translation backends / external plugins) be plugged in with no core changes.
 - **Windows GUI**: C++/CLI + .NET WinForms reusing the same core library, on par with the CLI; validates input before running, shows "error code + meaning + detail" on failure, and wraps every handler in `try/catch` to avoid crashes.
+- **Built-in update check**: the GUI can check for updates from Settings (compared by build number), with an optional pre-release channel toggle.
 
 ## How it works
 
@@ -266,12 +267,17 @@ Besides the CLI, there is a **GUI version** (Windows only, C++/CLI + .NET WinFor
 
 The GUI, the core library and the CLI are all built from a single `CMakeLists.txt`. zlib is vendored as source under `third_party/zlib`, so **no vcpkg / system zlib / network** is required.
 
-### Stability (v1.0.0 focus)
+### Stability design
 - **Error display**: on failure the log box shows "error code + meaning + detail", e.g.
   `[Unpack] failed: error code 2 (I/O error) | detail: cannot open file xxx`.
 - **Crash-proof**: every button handler is wrapped in `try/catch` (with a low-level fallback); exceptions are logged, never pop a system error dialog.
 - **Input validation**: files/directories are checked for existence before running.
 - **Log sync**: the log box mirrors `patcher.log` incrementally and loads history on startup.
+
+### Update check
+- The GUI auto-checks silently on startup (prompts only when a newer build is found), or you can click **Check for updates** in Settings.
+- Comparison: it fetches `version.json` from the GitHub `latest` branch and compares the **build number** with the local one (`latest > current` means an update exists).
+- **Receive pre-releases** toggle (default off): when off, only stable releases are offered; when on, pre-releases are offered too. The toggle persists in `%APPDATA%/RenPyPatcher/gui.cfg`.
 
 ### Build GUI (Windows)
 1. Install Visual Studio 2019/2022 ("Desktop development with C++" + "C++/CLI support" + ".NET Framework 4.8 development tools").
@@ -289,17 +295,20 @@ The GUI, the core library and the CLI are all built from a single `CMakeLists.tx
 - **Single source of truth**: the root `VERSION` file (semver, e.g. `1.0.0`).
 - **Auto-generated**: CMake parses `VERSION`, captures the git short commit, and writes `core/version.h` (pulled in by `core/plugin.h`) — no need to edit version macros by hand.
 - **Check version**: `patcher --version` (or `-v`) prints the version, the build commit, and the license.
-- **Release flow**: release is cut via the GitHub Actions **Run workflow (workflow_dispatch)** button — it builds and publishes a Release in one click; the release tag defaults to `build-<timestamp>` (can be set manually).
-  - `v*` tags are for **periodic backup** only: pushing a `v*` tag runs build verification but does **not** auto-publish a release.
+- **Build number**: injected automatically by CI (GitHub run number); used for the MSI four-segment version (so the installer can compare upgrades/downgrades) and for the GUI update check. Local builds default to 0.
+- **Pre-release naming**: auto-releases use `v<major>-beta<letter>` (letters increment from `A`, e.g. `betaA`/`betaB`/…); publishing a stable release for that major resets the beta counter back to `A`.
+- **Release flow**:
+  - Pushing to `main` → CI builds and publishes a **pre-release** automatically.
+  - Manual **Run workflow (workflow_dispatch)** with a tag (e.g. `v1.1.0`) → CI builds and publishes a **stable release** (non-prerelease).
 - `core/version.h` is a generated file and is `.gitignore`d — do not commit it by hand.
 
 ## CI / Release
 `.github/workflows/build.yml`:
-- Triggers on push to `main`, opening a PR against `main`, and pushing any `v*` tag (verification only).
-- Builds on **Ubuntu (gcc)** and **Windows (MSVC)**; packages each as a `.zip` artifact.
-- A **release** is produced only by a manual `workflow_dispatch` run: it compiles and creates a Release (default `prerelease` can be toggled) attaching both platform zips.
+- Triggers on push to `main` (auto build + pre-release) and on manual `workflow_dispatch` (build + stable release).
+- Builds on **Ubuntu (gcc)** and **Windows (MSVC)**; packages CLI zips plus a Windows MSI installer and a `version.json` (consumed by the GUI update check).
+- Latest builds: [Releases](https://github.com/Zz131417/renpy_patcher/releases). Update history: [CHANGELOG.md](CHANGELOG.md).
 
-To cut a release: open **Actions → Build & Package → Run workflow**.
+To cut a stable release: open **Actions → Build & Package → Run workflow**, set the tag (e.g. `v1.1.0`) and `prerelease=false`.
 
 ## Progress / Roadmap
 | Milestone | Scope | Status |
