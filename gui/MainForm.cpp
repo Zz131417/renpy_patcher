@@ -155,14 +155,19 @@ static String^ FailMsg(String^ op, int rc)
 ref class TaskCtx {
 public:
     OpType   Type;
-    String^  a, b, c, d;
+    String^  a;
+    String^  b;
+    String^  c;
+    String^  d;
     String^  opName;
     int      rc;
     bool     ok;
     String^  exMsg;
     String^  msg;
     String^  outPath;   // TransAI 完成后回填给 txtTransCsv
-    String^  base, key, model;  // AI 配置
+    String^  base;   // AI 配置
+    String^  key;
+    String^  model;
     Button^  btn;
 };
 
