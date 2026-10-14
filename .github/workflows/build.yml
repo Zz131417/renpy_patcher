@@ -168,6 +168,9 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout (读取 VERSION / CHANGELOG)
+        uses: actions/checkout@v4
+
       - name: 计算 Release tag / 预发布
         id: meta
         shell: bash
@@ -204,9 +207,6 @@ jobs:
               f.write("prerelease=%s\n" % str(pre).lower())
           PY
 
-      # 先 checkout 拿到 CHANGELOG（此时还没有 artifacts，clean 不会误删任何东西）
-      - name: Checkout (读取 CHANGELOG 作为发布说明)
-        uses: actions/checkout@v4
 
       # 再下载产物，确保 artifacts 在 checkout 之后写入、不会被清理
       - uses: actions/download-artifact@v4
