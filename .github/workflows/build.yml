@@ -42,6 +42,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: 诊断（确认 checkout 到正确提交 / 无旧缓存残留）
+        shell: bash
+        run: |
+          echo "HEAD: $(git rev-parse HEAD)"
+          echo "短SHA: $(git rev-parse --short HEAD)"
+          grep -n "GetTempPathA" gui/MainForm.cpp && echo "!! 仍含 GetTempPathA（旧缓存）" || echo "OK: MainForm.cpp 已无 GetTempPathA"
 
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
