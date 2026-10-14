@@ -1,6 +1,5 @@
 // gui/MainForm.cpp —— WinForms 主窗体实现（C++/CLI）
 // 模块化布局：左侧导航栏 + 右侧三页面（游戏管理 / 首页 / 设置）
-// (CI 重建标记：触发全新 checkout，规避 rerun 复用旧工作区)
 #include "MainForm.h"
 #include <stdlib.h>
 
