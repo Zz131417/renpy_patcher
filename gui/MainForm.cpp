@@ -498,6 +498,29 @@ void MainForm::BuildGame()
 
     y += 124;
 
+    // ============ 聊天分支导图 ============
+    GroupBox^ gbBr = MakeGroup(L"聊天分支导图 (解析 label/menu 选择分支，生成导图)", 12, y, 736, 92);
+    txtBranchDir = gcnew TextBox();   txtBranchDir->Location = Drawing::Point(14, 28);  txtBranchDir->Size = Drawing::Size(252, 23); txtBranchDir->Font = UI::FONT;
+    btnBrowseBranchDir = gcnew Button(); btnBrowseBranchDir->Location = Drawing::Point(271, 26); btnBrowseBranchDir->Size = Drawing::Size(60, 25); btnBrowseBranchDir->Text = L"浏览";
+    cmbBranchFmt = gcnew ComboBox();  cmbBranchFmt->Location = Drawing::Point(336, 27); cmbBranchFmt->Size = Drawing::Size(110, 23); cmbBranchFmt->Font = UI::FONT;
+    cmbBranchFmt->DropDownStyle = ComboBoxStyle::DropDownList;
+    cmbBranchFmt->Items->AddRange(gcnew array<Object^>{ L"mermaid", L"json", L"dot", L"tree" });
+    cmbBranchFmt->SelectedIndex = 0;
+    txtBranchOut = gcnew TextBox();   txtBranchOut->Location = Drawing::Point(452, 28); txtBranchOut->Size = Drawing::Size(160, 23); txtBranchOut->Font = UI::FONT;
+    btnBrowseBranchOut = gcnew Button(); btnBrowseBranchOut->Location = Drawing::Point(617, 26); btnBrowseBranchOut->Size = Drawing::Size(60, 25); btnBrowseBranchOut->Text = L"浏览";
+    btnBranchGen = gcnew Button();    btnBranchGen->Location = Drawing::Point(14, 58);  btnBranchGen->Size = Drawing::Size(140, 25); btnBranchGen->Text = L"生成导图";
+    btnBranchSave = gcnew Button();   btnBranchSave->Location = Drawing::Point(160, 58); btnBranchSave->Size = Drawing::Size(140, 25); btnBranchSave->Text = L"保存到文件";
+    gbBr->Controls->AddRange(gcnew array<Control^>{ txtBranchDir, btnBrowseBranchDir, cmbBranchFmt, txtBranchOut, btnBrowseBranchOut, btnBranchGen, btnBranchSave });
+    pnlGame->Controls->Add(gbBr);
+    StyleBtn(btnBrowseBranchDir, false); StyleBtn(btnBrowseBranchOut, false);
+    StyleBtn(btnBranchGen, true); StyleBtn(btnBranchSave, false);
+    btnBrowseBranchDir->Click += gcnew EventHandler(this, &MainForm::btnBrowseBranchDir_Click);
+    btnBrowseBranchOut->Click += gcnew EventHandler(this, &MainForm::btnBrowseBranchOut_Click);
+    btnBranchGen->Click += gcnew EventHandler(this, &MainForm::btnBranchGen_Click);
+    btnBranchSave->Click += gcnew EventHandler(this, &MainForm::btnBranchSave_Click);
+
+    y += 104;
+
     // ============ 日志 ============
     GroupBox^ gbLog = MakeGroup(L"日志 (详细见 patcher.log)", 12, y, 736, 140);
     txtLog = gcnew TextBox();
@@ -949,6 +972,27 @@ void MainForm::bgTask_DoWork(Object^, DoWorkEventArgs^ e)
             if (arr) free_dialog_entries(arr, cnt);
             break;
         }
+        case OpType::Branch: {
+            branch_graph_t g;
+            rc = analyze_branches(a.c_str(), &g);
+            if (rc == RP_OK) {
+                std::string fmt8 = b.empty() ? "mermaid" : b;
+                std::string outp = cc.empty() ? std::string() : cc;
+                if (outp.empty()) {
+                    String^ dir = TempPath();
+                    String^ ext = (fmt8=="json") ? ".json" : (fmt8=="dot") ? ".dot" : (fmt8=="tree") ? ".txt" : ".mmd";
+                    String^ tp = System::IO::Path::Combine(dir, L"branch_" + DateTime::Now.Ticks.ToString() + ext);
+                    outp = ToUtf8(tp);
+                    c->outPath = tp;
+                } else {
+                    c->outPath = gcnew String(cc.c_str());
+                }
+                rc = branch_export(&g, fmt8.c_str(), outp.c_str());
+                if (rc == RP_OK) c->msg = L"[分支] 导图生成完成 ✅";
+            }
+            branch_free(&g);
+            break;
+        }
         }
         c->rc = rc;
         c->ok = (rc == RP_OK);
@@ -978,6 +1022,14 @@ void MainForm::bgTask_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^ e
 
     if (c->Type == OpType::TransAI && c->ok && !String::IsNullOrEmpty(c->outPath)) {
         txtTransCsv->Text = c->outPath;   // 便于下一步直接「生成翻译mod」
+    }
+    if (c->Type == OpType::Branch && c->ok && !String::IsNullOrEmpty(c->outPath)) {
+        _branchOutPath = c->outPath;
+        txtBranchOut->Text = c->outPath;
+        try {
+            String^ content = System::IO::File::ReadAllText(c->outPath);
+            ShowTextDialog(L"聊天分支导图", content);
+        } catch (...) {}
     }
     SyncLog();
 }
@@ -1124,6 +1176,65 @@ void MainForm::bgUpdate_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^
         if (r->Manual) MessageBox::Show(L"当前已是最新版本。", L"检查更新",
                                          MessageBoxButtons::OK, MessageBoxIcon::Information);
     }
+}
+
+
+// ---- 聊天分支导图 ----
+
+void MainForm::btnBrowseBranchDir_Click(Object^, EventArgs^) { BrowseFolder(txtBranchDir); }
+void MainForm::btnBrowseBranchOut_Click(Object^, EventArgs^)
+{
+    SaveFileDialog^ d = gcnew SaveFileDialog();
+    d->Filter = L"分支导图 (*.mmd;*.json;*.dot;*.txt)|*.mmd;*.json;*.dot;*.txt|所有文件 (*.*)|*.*";
+    d->FileName = txtBranchOut->Text;
+    if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) txtBranchOut->Text = d->FileName;
+}
+
+void MainForm::btnBranchGen_Click(Object^, EventArgs^)
+{
+    if (!CheckDir(txtBranchDir, L"分支-解包目录")) return;
+    String^ fmt = (cmbBranchFmt->SelectedItem != nullptr) ? cmbBranchFmt->SelectedItem->ToString() : L"mermaid";
+    RunOp(OpType::Branch, btnBranchGen, L"生成分支导图", txtBranchDir->Text->Trim(), fmt, txtBranchOut->Text->Trim(), nullptr);
+}
+
+void MainForm::btnBranchSave_Click(Object^, EventArgs^)
+{
+    if (String::IsNullOrEmpty(_branchOutPath) || !System::IO::File::Exists(_branchOutPath)) {
+        AppendLog(L"[分支] 请先点「生成导图」再保存"); return;
+    }
+    SaveFileDialog^ d = gcnew SaveFileDialog();
+    String^ ext = (cmbBranchFmt->SelectedItem != nullptr) ? cmbBranchFmt->SelectedItem->ToString() : L"mermaid";
+    d->Filter = L"分支导图 (*.mmd;*.json;*.dot;*.txt)|*.mmd;*.json;*.dot;*.txt|所有文件 (*.*)|*.*";
+    d->FileName = L"branch." + ext;
+    if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) {
+        try {
+            System::IO::File::Copy(_branchOutPath, d->FileName, true);
+            AppendLog(L"[分支] 已保存导图 -> " + d->FileName);
+        } catch (Exception^ e) { AppendLog(L"❌ 保存失败: " + e->Message); }
+    }
+}
+
+void MainForm::ShowTextDialog(String^ title, String^ content)
+{
+    Form^ dlg = gcnew Form();
+    dlg->Text = title;
+    dlg->ClientSize = Drawing::Size(720, 520);
+    dlg->StartPosition = FormStartPosition::CenterParent;
+    dlg->Font = UI::FONT;
+    dlg->BackColor = Drawing::Color::White;
+    TextBox^ tb = gcnew TextBox();
+    tb->Location = Drawing::Point(12, 12); tb->Size = Drawing::Size(696, 462);
+    tb->Multiline = true; tb->ScrollBars = ScrollBars::Both;
+    tb->ReadOnly = true; tb->BorderStyle = BorderStyle::FixedSingle;
+    tb->BackColor = UI::CONSOLE_B; tb->ForeColor = UI::CONSOLE_F; tb->Font = UI::FONT_MONO;
+    tb->Text = content;
+    Button^ b = gcnew Button();
+    b->Location = Drawing::Point(630, 484); b->Size = Drawing::Size(78, 24);
+    b->Text = L"关闭"; b->DialogResult = Windows::Forms::DialogResult::OK;
+    StyleBtn(b, false);
+    dlg->AcceptButton = b;
+    dlg->Controls->AddRange(gcnew array<Control^>{ tb, b });
+    dlg->ShowDialog(this);
 }
 
 } // namespace RenPyPatcherGUI

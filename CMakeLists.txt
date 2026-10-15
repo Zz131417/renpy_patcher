@@ -78,6 +78,7 @@ set(CORE_SRC
     translate/json_io.c
     translate/ai_translate.c
     translate/translate_cli.c
+    analyze/branch.c
     inject/direct/direct_inject.c
     inject/hot/inject_api.c        # 热注入入口（非 Windows 为 stub，Windows 走 LoadLibrary 注入）
 )

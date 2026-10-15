@@ -22,6 +22,7 @@
 #include "util/zip_extract.h"
 #include "util/sfx.h"
 #include "util/resolve_source.h"
+#include "analyze/branch.h"
 
 namespace RenPyPatcherGUI {
 
@@ -39,7 +40,7 @@ static const int PAGE_SETTINGS = 2;   // 设置
 
 /* 后台任务类型（用于检查更新之外的文件操作，避免界面卡死） */
 public enum class OpType {
-    Unpack, Build, Credit, Export, TransExtract, TransAI, TransBuild, ExportSfx, ExportLauncher
+    Unpack, Build, Credit, Export, TransExtract, TransAI, TransBuild, ExportSfx, ExportLauncher, Branch
 };
 
 /// <summary>检查更新结果（后台线程 -> UI 线程传递用）</summary>
@@ -120,6 +121,14 @@ private:
     Button^   btnExportSfx;
     Button^   btnExportLauncher;
 
+    // ---- 游戏管理页：聊天分支导图 ----
+    TextBox^  txtBranchDir;
+    Button^   btnBrowseBranchDir;
+    ComboBox^ cmbBranchFmt;
+    Button^   btnBranchGen;
+    Button^   btnBranchSave;
+    TextBox^  txtBranchOut;
+
     // ---- 游戏管理页：翻译流水线 ----
     TextBox^  txtTransDir;
     Button^   btnBrowseTransDir;
@@ -157,6 +166,7 @@ private:
     // ---- 文件操作后台任务 ----
     BackgroundWorker^ bgTask;
     Button^   _activeBtn;
+    String^   _branchOutPath;   // 分支导图临时输出路径（DoWork 写入，Completed 读取显示）
 
     // ---- 页面构建 / 切换 ----
     void BuildNav();
@@ -208,6 +218,10 @@ private:
     void btnTransExtract_Click(Object^, EventArgs^);
     void btnTransAI_Click(Object^, EventArgs^);
     void btnTransBuild_Click(Object^, EventArgs^);
+    void btnBrowseBranchDir_Click(Object^, EventArgs^);
+    void btnBrowseBranchOut_Click(Object^, EventArgs^);
+    void btnBranchGen_Click(Object^, EventArgs^);
+    void btnBranchSave_Click(Object^, EventArgs^);
 
     // ---- 检查更新 ----
     void btnCheckUpdate_Click(Object^, EventArgs^);
@@ -228,6 +242,7 @@ private:
     // ---- 报错显示 / 防崩溃 辅助 ----
     void SyncLog();
     void ReportFail(String^ op, int rc);
+    void ShowTextDialog(String^ title, String^ content);   // 弹窗展示导图/长文本
     bool CheckFile(TextBox^ tb, String^ label);
     bool CheckDir(TextBox^ tb, String^ label);
 };

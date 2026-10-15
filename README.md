@@ -236,6 +236,21 @@ patcher translate human dialogs_t.json --lang zh -o translation_mod
 patcher build <游戏.rpa|别名> -m translation_mod -o patched.rpa
 ```
 
+## 聊天分支导图（解析 label / menu 选择分支）
+
+把游戏脚本里的 `label` 与 `menu` 选择分支解析成一张「分支图」，导出多种格式，方便梳理剧情走向 / 做聊天 AVG 的路线总览：
+
+```bash
+# 解析 <解包目录> 下所有 .rpy，生成分支导图
+# 格式：tree（文本树）| mermaid（flowchart）| dot（graphviz）| json（结构化）
+patcher branch <解包目录> -o branch.mmd --format mermaid
+patcher branch <解包目录> -o branch.txt --format tree
+```
+
+- **菜单选项**以带文本的边呈现（`A -->|"去森林"| 森林`），`jump` / `call` / `return` 也作为分支边；支持前向 / 跨文件 label 引用。
+- `mermaid` 可直接贴进支持 Mermaid 的 Markdown 或在线编辑器渲染；`dot` 可用 `dot -Tpng branch.dot -o branch.png` 出图。
+- GUI「游戏管理 → 聊天分支导图」：选目录、选格式、点「生成导图」即弹窗展示，可再「保存到文件」。
+
 要点：
 - 中间格式为 **JSON**（`file/line/speaker/source/target`），规避 CSV 引号与换行的转义坑。
 - 提取 **对话（say）+ 菜单（menu）+ 界面（ui）** 三类可翻译文本：
@@ -254,6 +269,7 @@ patcher build <游戏.rpa|别名> -m translation_mod -o patched.rpa
 - 解包 / 注入**可直接选整个游戏的 .zip 压缩包**（自动解压定位内部 .rpa）；游戏登记也支持整包导入
 - 导出页新增「导出自解压 exe」「导出启动器 exe」（填启动命令），导出为单文件 exe 便于分发
 - 翻译流水线：提取对话 / AI 翻译 / 生成翻译 mod
+- 聊天分支导图：解析 label / menu 选择分支，导出 tree / mermaid / dot / json（CLI + GUI）
 - 检查更新：设置页可一键检查，按构建号与 GitHub 最新构建比较；「接收测试版更新」开关可切换是否提示测试版
 
 GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源码形式内置在 `third_party/zlib`，**无需 vcpkg / 系统 zlib / 联网**。
@@ -309,6 +325,7 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - 来源声明（自动 / 手动 / 仅导出文字）
 - 分卷 ZIP 导出（自研 `util/zip`，仅依赖 zlib）
 - 翻译流水线（提取对话/菜单/界面文本 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod，统一 old/new 字符串翻译）
+- 聊天 / 选择分支解析与导图生成（tree / mermaid / dot / json 四种格式，CLI + GUI）
 - 游戏别名管理
 - Windows GUI（功能对齐 CLI，含检查更新与测试版通道）
 - 跨平台 CI 编译与自动 / 手动发布

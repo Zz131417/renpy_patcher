@@ -33,6 +33,7 @@
 #include "util/credit.h"
 #include "inject/export/export_module.h"
 #include "translate/translate_cli.h"
+#include "analyze/branch.h"
 #include "util/log.h"
 #include "util/zip_extract.h"
 #include "util/sfx.h"
@@ -64,6 +65,7 @@ static void usage(const char *prog) {
     printf("  %s credit <game.rpa|游戏名> [-o out.rpa]   给包添加来源声明\n", prog);
     printf("  %s credit --text [--game <名>]                仅导出声明文字\n", prog);
     printf("  %s export <dir> -o <out.zip> [-split 100M] [-store|-deflate]   导出 zip（可分卷）\n", prog);
+    printf("  %s branch <dir> -o out [--format mermaid|json|dot|tree]   解析聊天/选择分支，生成分支导图\n", prog);
     printf("全局选项: --log <file> | --no-log | --debug | --log-level <0-3>\n");
 }
 
@@ -319,6 +321,24 @@ int cmd_export_exe(int argc, char **argv) {
 
 /* ---------- 入口 ---------- */
 
+int cmd_branch(int argc, char **argv) {
+    const char *dir = NULL, *out = NULL, *fmt = "mermaid";
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
+        else if (!strcmp(argv[i], "--format") && i + 1 < argc) fmt = argv[++i];
+        else if (!dir) dir = argv[i];
+    }
+    if (!dir) {
+        fprintf(stderr, "usage: patcher branch <dir> -o out [--format mermaid|json|dot|tree]\n");
+        return 1;
+    }
+    branch_graph_t g;
+    if (analyze_branches(dir, &g) != RP_OK) { log_error("branch analyze failed: %s", dir); return 1; }
+    if (branch_export(&g, fmt, out ? out : "-") != RP_OK) { log_error("branch export failed"); branch_free(&g); return 1; }
+    branch_free(&g);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *prog = argv[0];
 
@@ -358,6 +378,7 @@ int main(int argc, char **argv) {
     if (!strcmp(cmd, "import"))     return cmd_import(sub_argc, sub_argv);
     if (!strcmp(cmd, "export-exe")) return cmd_export_exe(sub_argc, sub_argv);
     if (!strcmp(cmd, "translate")) return cmd_translate(sub_argc, sub_argv);
+    if (!strcmp(cmd, "branch"))      return cmd_branch(sub_argc, sub_argv);
 
     usage(prog);
     return 1;
