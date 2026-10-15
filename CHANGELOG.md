@@ -6,6 +6,7 @@
 
 ### 文档
 - 新增 [MOD.md](doc/MOD.md)：mod 开发 / 调用文档，覆盖**文件级 mod**（build 合并）、**翻译 mod**（translate build 生成 old/new）、**热注入 mod**（hotinject 注入，`mod_main.py` 的 `on_attach()` 生命周期与宿主 Python 访问）三类，含目录结构、调用命令、最小示例与综合汉化示例。
+- 文档细分：把 `README.md` 中偏开发向的内容（技术栈 / 项目目录 / 架构 / 构建 / 调试 / CI / 测试 / 许可证）拆分到 [doc/DEVELOP.md](doc/DEVELOP.md)，新增常见问题 [doc/FAQ.md](doc/FAQ.md)；`README.md` 精简为用户向用法总览，顶部加「开发者文档」入口链接。
 
 ### 新增 / 变更
 - **聊天 / 选择分支解析与导图生成**：新增 `analyze/branch`，解析游戏脚本（.rpy）中的 `label` 与 `menu` 选择分支，构建分支图并导出 **四种格式**：

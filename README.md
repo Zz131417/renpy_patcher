@@ -21,92 +21,9 @@
 - **整包导入**：直接吃整个游戏的 `.zip` 压缩包，自动解压并定位内部 `.rpa`（CLI `import` / GUI 游戏登记）。
 - **导出为 exe**：把目录（游戏 / mod）打成自解压安装包，或注入启动命令生成「启动器 exe」（仅 Windows 可生成；纯解压 / 启动器两种模式）。
 
-## 技术栈
-| 层面 | 选型 |
-| --- | --- |
-| 核心语言 | **C11**（纯 C，无 C++ / 外部运行时依赖） |
-| 压缩 | **zlib**（RPA 内嵌 deflate；自研 `zlib_wrap` 封装 inflate/deflate），源码内置 `third_party/zlib` |
-| 序列化 | 自研 **pickle_min**：解析 CPython 协议 2/3/4 的 `pickle`，用于读取与重写 Ren'Py 索引 |
-| 资源格式 | **RPA-3.0**：头部 `RPA-3.0` + 8 字节索引偏移 + 4 字节 XOR prefix；索引（pickle）位于数据段之后 |
-| 构建系统 | **CMake ≥ 3.17**（核心静态库 `renpy_core` + CLI `patcher` 可执行 + Windows GUI `patcher_gui`）；zlib 源码内置，无 vcpkg / 系统 zlib |
-| 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译；推送 `main` 自动发测试版，手动 `workflow_dispatch` 发正式版 |
-| 热注入（Windows） | DLL 注入（`CreateRemoteThread` + `LoadLibrary`）+ **CPython C-API** 桥（`py_bridge.c` 定位宿主解释器并执行 `mod_main.py`） |
-| 扩展机制 | 统一模块契约（`core/plugin.h`）+ 中央注册表（`core/plugin_loader`） |
+## 开发者文档
 
-## 项目目录
-```
-.
-├── CMakeLists.txt            # 构建定义：renpy_core 静态库 + patcher 可执行 + patcher_gui（Windows GUI）
-├── VERSION                   # 版本号（语义化版本，单一事实来源）
-├── CHANGELOG.md              # 更新日志（随发版更新，本 README 不依赖它）
-├── LICENSE                   # 非商业许可证（禁止商业使用）
-├── DESIGN.md                 # 架构设计与里程碑说明
-├── .github/workflows/
-│   └── build.yml            # CI：Linux/Windows 编译；推送 main 自动发测试版 / 手动发正式版
-├── third_party/
-│   └── zlib/                # 内置 zlib 源码（add_subdirectory 构建，无需 vcpkg / 系统 zlib / 联网）
-├── core/                    # 统一模块契约与注册表
-│   ├── plugin.h             #   模块接口 / 结构体定义
-│   └── plugin_loader.c/.h   #   中央注册表（查找 / 注册 / 扩展入口）
-├── util/                    # 通用工具
-│   ├── io_buf.c/.h          #   字节缓冲（读 / 写 / 追加）
-│   ├── pickle_min.c/.h      #   CPython pickle 解析器（协议 2/3/4，含 memo）
-│   ├── pickle_write.c/.h    #   pickle 序列化（写入 RPA 索引，协议 2）
-│   └── dir_walk.c/.h        #   目录树遍历（重打包 / mod 扫描）
-├── compress/
-│   └── zlib_wrap.c/.h       # zlib inflate/deflate 封装（带安全上限防卡死）
-├── rpa/                     # RPA-3.0 解包与重打包
-│   ├── rpa_format.h         #   头 / 块结构定义
-│   ├── rpa_v3.c/.h          #   解包 + 索引解析
-│   └── rpa_v3_repack.c      #   重打包（数据 + 索引拼装）
-├── mod/                     # 统一 mod 模块
-│   ├── mod_loader.c         #   目录合并（覆盖 / 新增文件）
-│   └── mod_manifest.h       #   mod 元数据 / 契约
-├── inject/
-│   ├── direct/
-│   │   └── direct_inject.c/.h  # 直接注入：解包→合并→重打包
-│   └── hot/                 # 热注入（运行时进程注入，Windows）
-│       ├── agent.c/.h       #   被注入的 DLL 载荷
-│       ├── inject_api.c     #   热注入入口（非 Windows 为 stub）
-│       └── py_bridge.c/.h   #   定位宿主 CPython 并执行 mod_main.py
-├── gui/                     # Windows GUI（C++/CLI + .NET WinForms，复用 renpy_core）
-│   ├── Program.cpp          #   托管入口 main()
-│   ├── MainForm.h/.cpp      #   主窗口与事件（含 try/catch 防崩溃、报错显示、检查更新）
-├── cli/
-│   └── main.c               # 命令行入口（子命令分发）
-└── tests/                   # 演示游戏 + 汉化 mod + 验证脚本
-    ├── README_test.md       #   测试说明（含许可证约束）
-    ├── gen_demo_assets.py   #   生成演示游戏素材
-    ├── make_real_rpa.py     #   用真实 RPA 格式打包
-    ├── verify_rpa.py        #   用 Ren'Py loader 逻辑校验产物
-    ├── mod_hanzi/           #   示例汉化 mod（含中文 rpy + logo 替换）
-    └── sample_game/         #   示例游戏（game/ 目录）
-```
-
-## 架构（统一模块契约）
-- 所有能力实现 `core/plugin.h` 定义的统一接口，启动时向 `core/plugin_loader` 中央注册表登记。
-- CLI（`cli/main.c`）解析子命令后，从注册表查找对应模块并调用。
-- GUI（`gui/MainForm.cpp`）复用同一静态库 `renpy_core`，通过 C 接口调用，与 CLI 共享全部能力。
-- 新能力（压缩导出 / 翻译后端 / 外部插件 DLL）只需实现契约并注册即可接入，无需改动核心。
-
-## 构建
-
-zlib 以源码形式内置在 `third_party/zlib`，由 CMake `add_subdirectory` 自动构建，**无需系统 zlib / vcpkg / 联网**。
-
-版本号由根目录 `VERSION` 文件统一管理（语义化版本，如 `1.0.0`），CMake 会据此生成
-`core/version.h` 并嵌入 git 短提交信息；`patcher --version` 可查看。
-
-```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-# 产物：build/patcher（Linux），build/Release/patcher.exe + patcher_gui.exe（Windows）
-```
-
-> 注：CLI 也可用单文件 gcc 直接编（仍需先由 CMake 生成 `core/version.h`，且链接系统 `-lz`）：
-> ```bash
-> gcc -std=c11 -O2 -I. core/plugin_loader.c util/*.c compress/*.c rpa/*.c mod/*.c \
->     inject/direct/*.c inject/hot/inject_api.c cli/main.c -lz -o build/patcher
-> ```
+技术栈、项目目录、架构、构建、调试、CI、测试与许可证等开发向内容，见 [doc/DEVELOP.md](doc/DEVELOP.md)；常见问题见 [doc/FAQ.md](doc/FAQ.md)。
 
 ## 用法
 ```bash
@@ -299,21 +216,8 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - 比较依据：拉取 GitHub `latest` 分支的 `version.json` 中的**构建号**，与本地构建号比较（`latest > 当前` 即视为有新版本）。
 - 「接收测试版更新」开关（默认关）：关闭时只提示正式版；开启后测试版也会提示。开关状态持久化在 `%APPDATA%/RenPyPatcher/gui.cfg`。
 
-## 版本与发布
-
-> 本项目的版本号与发布信息集中在少数固定位置管理，本文档**不写死具体版本**，发版时无需改动 README。
-
-- **版本号来源**：根目录 `VERSION` 文件（语义化版本，如 `1.1.0`）。CMake 读取后生成 `core/version.h`（被 `core/plugin.h` 包含），无需手工改版本号。
-- **构建号**：由 CI 自动注入（GitHub 仓库运行序号），用于 MSI 安装包的四段版本号（供安装器做升级/降级比较）以及 GUI 检查更新时的版本比较。本地未接入 CI 时构建号默认为 0。
-- **测试版命名**：自动发版采用 `v<主版本>-beta<字母>` 形式（字母从 `A` 开始依次递增，如 `betaA` / `betaB` / …）；主版本号来自 `VERSION` 文件。
-- **发正式版后自动升版**：手动发布一个正式版（workflow_dispatch，tag 形如 `vX.Y.Z` 且 `prerelease=false`）后，CI 会自动把 `VERSION` 的 **minor 段 +1**（如 `1.2.0` → `1.3.0`）并推回 `main`；于是后续 `push main` 产生的测试版会自动进入新的主版本序列（`v1.3.0-betaA`…），不会回退覆盖旧 beta。无需手工维护下个开发版本号。
-- **发布方式**：
-  - 推送 `main` 分支 → 自动编译并发布**测试版**（预发布）。
-  - 在 GitHub Actions 页面 **手动 Run workflow（`workflow_dispatch`）** 并指定 tag（如 `v1.1.0`）→ 编译并发布**正式版**（非预发布）。
-- **最新发布 / 产物**：见 [Releases](https://github.com/Zz131417/renpy_patcher/releases)，产物含 Windows MSI 安装包、Windows / Linux 压缩包与 `version.json`。
-- **更新历史**：见 [CHANGELOG.md](CHANGELOG.md)。
-
 ## 测试
+
 见 [`tests/README_test.md`](tests/README_test.md)：包含可直接用 Ren'Py SDK 实测的演示游戏、汉化 mod，以及用 Ren'Py loader 逻辑校验产物的脚本。
 
 本仓库已配置 CI（`build.yml`）：推送 `main` 自动编译并发布测试版；正式发版走手动 `workflow_dispatch`。
@@ -332,6 +236,5 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - 跨平台 CI 编译与自动 / 手动发布
 
 > 能力范围与最新进展以 [CHANGELOG.md](CHANGELOG.md) 为准。
-
-## 许可证
-本项目采用**非商业许可证**：个人学习、研究、非商业用途可自由使用与修改；**禁止任何商业用途**，商业使用需单独书面授权。详见 [`LICENSE`](LICENSE)。
+>
+> 开发 / 构建 / 调试 / CI 见 [doc/DEVELOP.md](doc/DEVELOP.md)；常见问题见 [doc/FAQ.md](doc/FAQ.md)。
