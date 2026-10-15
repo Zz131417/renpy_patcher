@@ -389,7 +389,7 @@ int build_translation_mod(const dialog_entry_t *arr, size_t count,
         fname[k] = 0;
         char *dot = strrchr(fname, '.'); if (dot) *dot = 0;
 
-        char outpath[2048];
+        char outpath[4096];
         snprintf(outpath, sizeof(outpath), "%s/%s.rpy", tldir, fname);
         FILE *of = fopen(outpath, "wb");
         if (!of) { log_error("无法写入翻译文件: %s", outpath); continue; }

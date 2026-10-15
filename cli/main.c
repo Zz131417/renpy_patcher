@@ -233,7 +233,6 @@ static int make_tmp_dir(char *buf, size_t n) {
     snprintf(buf, n, "/tmp/renpy_patcher_%d", (int)getpid());
     return mkdir(buf, 0700);
 }
-static void get_exe_dir(char *buf, size_t n) { snprintf(buf, n, "."); }
 #endif
 
 /* 把输入（.rpa/别名/整包.zip）归一化为可直接处理的 .rpa 路径。
@@ -247,7 +246,9 @@ static const char *resolve_input_rpa(const char *token, char *tmpdir, size_t tn,
     return rpa;
 }
 
+#ifdef _WIN32
 static char g_stub_buf[2048];
+#endif
 static const char *pick_stub(void) {
 #ifdef _WIN32
     char d[2048]; get_exe_dir(d, sizeof(d));
