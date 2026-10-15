@@ -124,6 +124,7 @@ private:
     // ---- 游戏管理页：聊天分支导图 ----
     TextBox^  txtBranchDir;
     Button^   btnBrowseBranchDir;
+    Button^   btnBrowseBranchOut;
     ComboBox^ cmbBranchFmt;
     Button^   btnBranchGen;
     Button^   btnBranchSave;
