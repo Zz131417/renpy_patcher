@@ -285,12 +285,13 @@ private:
     void cboFont_SelectedIndexChanged(Object^, EventArgs^);
     void cboFontSize_SelectedIndexChanged(Object^, EventArgs^);
     void btnResetUI_Click(Object^, EventArgs^);
+    void AnimTick(Object^ sender, EventArgs^);   // 页面切换滑入动画 Tick
 
     // Windows DWM 模糊 P/Invoke
-    [StructLayout(LayoutKind::Sequential)]
-    ref struct AccentPolicy { int nAccentState; int nFlags; int nColor; int nAnimationId; };
-    [StructLayout(LayoutKind::Sequential)]
-    ref struct WinCompAttrData { int nAttribute; IntPtr pData; unsigned int ulDataSize; };
+    [System::Runtime::InteropServices::StructLayout(System::Runtime::InteropServices::LayoutKind::Sequential)]
+    value struct AccentPolicy { int nAccentState; int nFlags; int nColor; int nAnimationId; };
+    [System::Runtime::InteropServices::StructLayout(System::Runtime::InteropServices::LayoutKind::Sequential)]
+    value struct WinCompAttrData { int nAttribute; System::IntPtr pData; unsigned int ulDataSize; };
     [DllImport("user32.dll")]
     static bool SetWindowCompositionAttribute(IntPtr hWnd, WinCompAttrData^ data);
     void lnkProject_Click(Object^, LinkLabelLinkClickedEventArgs^);

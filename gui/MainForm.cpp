@@ -339,11 +339,7 @@ void MainForm::ShowPage(int idx)
         System::Windows::Forms::Timer^ tm = gcnew System::Windows::Forms::Timer();
         tm->Interval = 12;
         tm->Tag = cur;
-        tm->Tick += gcnew EventHandler([this, tm, top](Object^, EventArgs^) {
-            Panel^ p = safe_cast<Panel^>(tm->Tag);
-            if (p->Top > top) { p->Top -= 3; if (p->Top < top) p->Top = top; }
-            else { p->Top = top; tm->Stop(); }
-        });
+        tm->Tick += gcnew EventHandler(this, &MainForm::AnimTick);
         tm->Start();
     }
 
@@ -427,17 +423,26 @@ void MainForm::ApplyRoundToAll(Control^ c, bool on)
     for each (Control^ ch in c->Controls) ApplyRoundToAll(ch, on);
 }
 
+void MainForm::AnimTick(Object^ sender, EventArgs^)
+{
+    Timer^ t = safe_cast<Timer^>(sender);
+    Panel^ p = safe_cast<Panel^>(t->Tag);
+    int top = 68;
+    if (p->Top > top) { p->Top -= 3; if (p->Top < top) p->Top = top; }
+    else { p->Top = top; t->Stop(); }
+}
+
 void MainForm::ApplyBlur(bool on)
 {
     try {
         AccentPolicy ap;
         ap.nAccentState = on ? 3 : 0;   // 3 = ACCENT_ENABLE_BLURBEHIND, 0 = ACCENT_DISABLED
         ap.nFlags = 0; ap.nColor = 0; ap.nAnimationId = 0;
-        WinCompAttrData d;
-        d.nAttribute = 19;  // WCA_ACCENT_POLICY
-        d.ulDataSize = (unsigned int)System::Runtime::InteropServices::Marshal::SizeOf(AccentPolicy::typeid);
+        WinCompAttrData^ d = gcnew WinCompAttrData();
+        d->nAttribute = 19;  // WCA_ACCENT_POLICY
+        d->ulDataSize = (unsigned int)System::Runtime::InteropServices::Marshal::SizeOf(AccentPolicy::typeid);
         pin_ptr<AccentPolicy> pp = &ap;
-        d.pData = IntPtr(pp);
+        d->pData = IntPtr(pp);
         SetWindowCompositionAttribute(this->Handle, d);
     } catch (...) {}
 }
