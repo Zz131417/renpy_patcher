@@ -45,3 +45,14 @@ installer_deploy/
 gui/installer/obj/
 gui/installer/files.wxs
 *.msi
+
+# 根目录开发/测试临时产物（已清理，防止再次误提交）
+api_export.zip
+api_out/
+c_out/
+t_out/
+patch.zip
+patch_split.z01
+patch_split.z02
+patch_split.zip
+test_api.log

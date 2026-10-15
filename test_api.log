@@ -1,4 +1,0 @@
-[INFO ][test_cpp_api][2026-10-12 11:34:38] 已写入来源声明: /tmp/renpy_patch_inject_3882_1791804878/ZZ_RENPY_PATCHER_CREDIT.txt
-[INFO ][test_cpp_api][2026-10-12 11:34:38] 已写入来源声明: .renpy_credit_tmp_add_3882_1791804878/ZZ_RENPY_PATCHER_CREDIT.txt
-[INFO ][test_cpp_api][2026-10-12 11:34:38] 来源声明已烘焙进: api_credited.rpa
-[INFO ][test_cpp_api][2026-10-12 11:34:38] 导出目录为 zip: api_out -> api_export.zip (compress=1, split=0)
