@@ -1,8 +1,8 @@
 {
-  "tag": "v1.3.0-betaD",
+  "tag": "v1.3.0",
   "version": "1.3.0",
-  "build": 103,
-  "prerelease": true,
-  "date": "2026-10-15T09:50:09Z",
-  "url": "https://github.com/Zz131417/renpy_patcher/releases/tag/v1.3.0-betaD"
+  "build": 104,
+  "prerelease": false,
+  "date": "2026-10-15T10:01:47Z",
+  "url": "https://github.com/Zz131417/renpy_patcher/releases/tag/v1.3.0"
 }
