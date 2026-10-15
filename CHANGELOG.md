@@ -10,6 +10,7 @@
 
 ### 新增 / 变更
 - **重打包 APK（导出成 APK）**：新增 `apk/apk_tool`，CLI `patcher export-apk <apk> -m <mod_dir> -o out.apk [--keep-sig]`，GUI「游戏管理 → 导出 APK」分组框。基于已有 Ren'Py 安卓包：解开 → 注入 mod（按 APK 根路径）→ 4 字节对齐（zipalign 4）重打包为**未签名 APK**；默认移除旧 `META-INF` 签名，需你用 `apksigner` 自签。底层 `util/zip` 新增条目数据对齐（`zip_set_alignment`，用 local header 的 extra 字段承载）与精确输出路径（支持非 `.zip` 后缀）。
+- **GUI 美化**：导航栏由左侧深色竖栏改为**顶部居中悬浮胶囊**（圆角白卡 + 阴影，浮于页面上方），三页改为铺满窗口宽度；窗口缩放时导航条自动水平居中、页面尺寸自适应（引入圆角 Region 与 Resize 处理）。
 - **聊天 / 选择分支解析与导图生成**：新增 `analyze/branch`，解析游戏脚本（.rpy）中的 `label` 与 `menu` 选择分支，构建分支图并导出 **四种格式**：
   - `tree`：文本树（从 `start` 深度优先展开菜单选项与跳转链，最直观）
   - `mermaid`：Mermaid `flowchart`，可直接贴进支持 Mermaid 的 Markdown / 在线渲染
@@ -31,7 +32,8 @@
   - 自解压安装包 exe：双击解压到「同目录/同名(去 `.exe`)」文件夹并打开
   - 启动器 exe：解压后自动运行所填启动命令（如 `game.exe`）
   - 底层：`tools/sfx_stub.c`（Windows 原生自解压桩）与目录 zip 拼成单文件；GUI「导出」页新增「导出自解压 exe」「导出启动器 exe」两个按钮，CLI 新增 `export-exe`。生成 exe 仅 Windows 支持（需 `sfx_stub.exe` 桩，随包附带）。
-- **GUI 美化**（随本版进入测试序列）：深色侧边导航栏、强调色按钮、圆角分组框、底部状态栏、后台线程不卡界面、项目主页链接、终端风日志框；解包 / 注入可直接选整包 `.zip`。
+- **重打包 APK（导出成 APK）**：新增 `apk/apk_tool`，CLI `patcher export-apk <apk> -m <mod_dir> -o out.apk [--keep-sig]`，GUI「游戏管理 → 导出 APK」分组框。基于已有 Ren'Py 安卓包：解开 → 注入 mod（按 APK 根路径）→ 4 字节对齐（zipalign 4）重打包为**未签名 APK**；默认移除旧 `META-INF` 签名，需你用 `apksigner` 自签。底层 `util/zip` 新增条目数据对齐（`zip_set_alignment`，用 local header 的 extra 字段承载）与精确输出路径（支持非 `.zip` 后缀）。
+- **GUI 美化**：导航栏由左侧深色竖栏改为**顶部居中悬浮胶囊**（圆角白卡 + 阴影，浮于页面上方），三页改为铺满窗口宽度；窗口缩放时导航条自动水平居中、页面尺寸自适应（引入圆角 Region 与 Resize 处理）。
 
 ### 说明
 - 生成 exe 仅 Windows 可生成，其他平台执行会提示「仅 Windows 支持」。

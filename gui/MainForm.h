@@ -67,12 +67,10 @@ public:
 
 private:
     // ---- 导航栏 ----
-    Panel^   navBar;
-    Panel^   navHead;
+    Panel^   navBar;   // 顶部居中悬浮导航条（容器）
     Button^  btnNavGame;
     Button^  btnNavHome;
     Button^  btnNavSettings;
-    Label^   lblNavVer;
 
     // ---- 三个页面容器 ----
     Panel^   pnlGame;      // 游戏管理（所有实际操作）
@@ -180,6 +178,7 @@ private:
 
     // ---- 页面构建 / 切换 ----
     void BuildNav();
+    void OnResizeForm(Object^, EventArgs^);   // 窗口缩放时居中导航条 + 重算页面尺寸
     void BuildHome();
     void BuildGame();
     void BuildSettings();

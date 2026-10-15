@@ -7,6 +7,7 @@ static long g_logPos = 0;   // 已读取的 patcher.log 字节数，用于增量
 
 using namespace System;
 using namespace System::Windows::Forms;
+using namespace System::Drawing::Drawing2D;
 using namespace System::IO;
 using namespace RenPyPatcherGUI;
 using namespace System::Net;
@@ -50,6 +51,17 @@ static void StyleBtn(Button^ b, bool primary)
         b->FlatAppearance->MouseOverBackColor = Drawing::Color::FromArgb(209, 213, 219);
         b->FlatAppearance->MouseDownBackColor = Drawing::Color::FromArgb(209, 213, 219);
     }
+}
+
+/* 生成圆角矩形 Region（用于悬浮卡片 / 阴影） */
+static Drawing::Region^ MakeRoundRegion(int w, int h, int r) {
+    System::Drawing::Drawing2D::GraphicsPath^ gp = gcnew System::Drawing::Drawing2D::GraphicsPath();
+    gp->AddArc(0, 0, r, r, 180, 90);
+    gp->AddArc(w - r, 0, r, r, 270, 90);
+    gp->AddArc(w - r, h - r, r, r, 0, 90);
+    gp->AddArc(0, h - r, r, r, 90, 90);
+    gp->CloseAllFigures();
+    return gcnew Drawing::Region(gp);
 }
 
 /* 统一分组框样式（标题用强调色） */
@@ -179,7 +191,7 @@ MainForm::MainForm()
     this->MinimumSize = Drawing::Size(780, 520);
     this->StartPosition = FormStartPosition::CenterScreen;
     this->Font = UI::FONT;
-    this->BackColor = Drawing::Color::White;
+    this->BackColor = UI::PANEL;   // 浅灰底，衬托顶部悬浮白色导航卡片
     this->DoubleBuffered = true;
 
     log_init("patcher.log");
@@ -214,6 +226,10 @@ MainForm::MainForm()
 
     ShowPage(PAGE_GAME);   // 默认进入「游戏管理」
 
+    // 窗口缩放时居中悬浮导航条并重算页面尺寸
+    this->Resize += gcnew EventHandler(this, &MainForm::OnResizeForm);
+    OnResizeForm(nullptr, EventArgs::Empty);
+
     RefreshGames();
     AppendLog(gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING) + L" 已启动");
     SyncLog();
@@ -233,60 +249,58 @@ MainForm::MainForm()
 /* ===================== 导航栏 ===================== */
 void MainForm::BuildNav()
 {
+    const int BTN_W = 120, BTN_H = 38, GAP = 6, PADX = 14, PADY = 13, R = 12;
+    int cardW = PADX * 2 + BTN_W * 3 + GAP * 2;   // 400
+    int cardH = PADY * 2 + BTN_H;                 // 64
+    int navH  = cardH + 4;                        // 含阴影下移
+
+    // 透明容器，水平居中浮在顶部
     navBar = gcnew Panel();
-    navBar->Location = Drawing::Point(0, 0);
-    navBar->Size = Drawing::Size(168, 772);
-    navBar->BackColor = UI::SIDEBAR;
+    navBar->BackColor = Drawing::Color::Transparent;
+    navBar->Location = Drawing::Point((this->ClientSize.Width - cardW) / 2, 10);
+    navBar->Size = Drawing::Size(cardW, navH);
 
-    navHead = gcnew Panel();
-    navHead->Location = Drawing::Point(0, 0);
-    navHead->Size = Drawing::Size(168, 84);
-    navHead->BackColor = Drawing::Color::FromArgb(17, 24, 39);
-    Label^ app = gcnew Label();
-    app->Location = Drawing::Point(16, 18); app->Size = Drawing::Size(140, 26);
-    app->Text = L"Ren'Py Patcher";
-    app->Font = gcnew Drawing::Font(L"Microsoft YaHei", 14, FontStyle::Bold);
-    app->ForeColor = Drawing::Color::White;
-    Label^ sub = gcnew Label();
-    sub->Location = Drawing::Point(16, 46); sub->Size = Drawing::Size(140, 20);
-    sub->Text = L"解包 / 注入 / 汉化";
-    sub->Font = UI::FONT_SUB;
-    sub->ForeColor = Drawing::Color::FromArgb(148, 163, 184);
-    navHead->Controls->AddRange(gcnew array<Control^>{ app, sub });
+    // 阴影层（灰半透明圆角，下移 4px 制造悬浮感）
+    Panel^ shadow = gcnew Panel();
+    shadow->Location = Drawing::Point(0, 4);
+    shadow->Size = Drawing::Size(cardW, cardH);
+    shadow->BackColor = Drawing::Color::FromArgb(45, 15, 23, 42);
+    shadow->Region = MakeRoundRegion(cardW, cardH, R);
 
-    btnNavGame = gcnew Button();
-    btnNavGame->Location = Drawing::Point(14, 104);  btnNavGame->Size = Drawing::Size(140, 40);
-    btnNavGame->Text = L"游戏管理";
-    btnNavHome = gcnew Button();
-    btnNavHome->Location = Drawing::Point(14, 152);  btnNavHome->Size = Drawing::Size(140, 40);
-    btnNavHome->Text = L"首页";
+    // 卡片层（白底圆角）
+    Panel^ card = gcnew Panel();
+    card->Location = Drawing::Point(0, 0);
+    card->Size = Drawing::Size(cardW, cardH);
+    card->BackColor = Drawing::Color::White;
+    card->Region = MakeRoundRegion(cardW, cardH, R);
+
+    // 三个水平排列的导航按钮
+    btnNavGame     = gcnew Button();
+    btnNavHome     = gcnew Button();
     btnNavSettings = gcnew Button();
-    btnNavSettings->Location = Drawing::Point(14, 200); btnNavSettings->Size = Drawing::Size(140, 40);
-    btnNavSettings->Text = L"设置";
-
-    for each (Button^ b in gcnew array<Button^>{ btnNavGame, btnNavHome, btnNavSettings }) {
-        b->FlatStyle = FlatStyle::Flat;
-        b->Font = UI::FONT_B;
-        b->UseVisualStyleBackColor = false;
-        b->Cursor = Cursors::Hand;
-        b->ForeColor = Drawing::Color::FromArgb(203, 213, 225);
-        b->BackColor = UI::SIDEBAR;
-        b->FlatAppearance->BorderSize = 0;
-        b->FlatAppearance->MouseOverBackColor = UI::SIDEHI;
-        b->TextAlign = Drawing::ContentAlignment::MiddleLeft;
-        b->Padding = System::Windows::Forms::Padding(14, 0, 0, 0);
+    array<Button^>^ btns = gcnew array<Button^>{ btnNavGame, btnNavHome, btnNavSettings };
+    array<String^>^ names = gcnew array<String^>{ L"游戏管理", L"首页", L"设置" };
+    for (int i = 0; i < 3; i++) {
+        btns[i]->Location = Drawing::Point(PADX + i * (BTN_W + GAP), PADY);
+        btns[i]->Size = Drawing::Size(BTN_W, BTN_H);
+        btns[i]->Text = names[i];
+        btns[i]->FlatStyle = FlatStyle::Flat;
+        btns[i]->Font = UI::FONT_B;
+        btns[i]->UseVisualStyleBackColor = false;
+        btns[i]->Cursor = Cursors::Hand;
+        btns[i]->ForeColor = UI::TEXT;
+        btns[i]->BackColor = Drawing::Color::Transparent;
+        btns[i]->FlatAppearance->BorderSize = 0;
+        btns[i]->FlatAppearance->MouseOverBackColor = Drawing::Color::FromArgb(243, 244, 246);
+        btns[i]->FlatAppearance->MouseDownBackColor = Drawing::Color::FromArgb(229, 231, 235);
     }
-
-    lblNavVer = gcnew Label();
-    lblNavVer->Location = Drawing::Point(14, 740); lblNavVer->Size = Drawing::Size(140, 24);
-    lblNavVer->Text = gcnew String("v") + gcnew String(RPATCHER_VERSION_STRING);
-    lblNavVer->Font = UI::FONT;
-    lblNavVer->ForeColor = Drawing::Color::FromArgb(148, 163, 184);
-
-    navBar->Controls->AddRange(gcnew array<Control^>{ navHead, btnNavGame, btnNavHome, btnNavSettings, lblNavVer });
     btnNavGame->Click    += gcnew EventHandler(this, &MainForm::btnNavGame_Click);
     btnNavHome->Click    += gcnew EventHandler(this, &MainForm::btnNavHome_Click);
     btnNavSettings->Click += gcnew EventHandler(this, &MainForm::btnNavSettings_Click);
+
+    card->Controls->AddRange(gcnew array<Control^>{ btnNavGame, btnNavHome, btnNavSettings });
+    navBar->Controls->AddRange(gcnew array<Control^>{ shadow, card });
+    navBar->BringToFront();
 }
 
 void MainForm::ShowPage(int idx)
@@ -295,10 +309,10 @@ void MainForm::ShowPage(int idx)
     pnlHome->Visible     = (idx == PAGE_HOME);
     pnlSettings->Visible = (idx == PAGE_SETTINGS);
 
-    Drawing::Color sel = UI::ACCENT;
-    Drawing::Color nor = UI::SIDEBAR;
+    Drawing::Color sel = UI::ACCENT;                 // 选中：蓝底白字
+    Drawing::Color nor = Drawing::Color::Transparent;    // 未选：透明（显白卡底）
     Drawing::Color selF = Drawing::Color::White;
-    Drawing::Color norF = Drawing::Color::FromArgb(203, 213, 225);
+    Drawing::Color norF = UI::TEXT;
 
     btnNavGame->BackColor    = (idx == PAGE_GAME)     ? sel : nor;
     btnNavGame->ForeColor    = (idx == PAGE_GAME)     ? selF : norF;
@@ -312,12 +326,23 @@ void MainForm::btnNavGame_Click(Object^, EventArgs^)    { ShowPage(PAGE_GAME); }
 void MainForm::btnNavHome_Click(Object^, EventArgs^)    { ShowPage(PAGE_HOME); }
 void MainForm::btnNavSettings_Click(Object^, EventArgs^) { ShowPage(PAGE_SETTINGS); }
 
+/* 窗口缩放：顶部导航条水平居中 + 三页面铺满客户区 */
+void MainForm::OnResizeForm(Object^, EventArgs^)
+{
+    if (navBar && navBar->Width > 0)
+        navBar->Location = Drawing::Point((this->ClientSize.Width - navBar->Width) / 2, navBar->Location.Y);
+    int top = 68, pw = this->ClientSize.Width - 16, ph = this->ClientSize.Height - 92;
+    pnlGame->Location = Drawing::Point(8, top);      pnlGame->Size = Drawing::Size(pw, ph);
+    pnlHome->Location = Drawing::Point(8, top);      pnlHome->Size = Drawing::Size(pw, ph);
+    pnlSettings->Location = Drawing::Point(8, top);  pnlSettings->Size = Drawing::Size(pw, ph);
+}
+
 /* ===================== 首页 ===================== */
 void MainForm::BuildHome()
 {
     pnlHome = gcnew Panel();
-    pnlHome->Location = Drawing::Point(176, 8);
-    pnlHome->Size = Drawing::Size(760, 724);
+    pnlHome->Location = Drawing::Point(8, 68);
+    pnlHome->Size = Drawing::Size(this->ClientSize.Width - 16, this->ClientSize.Height - 92);
     pnlHome->AutoScroll = true;
     pnlHome->BackColor = Drawing::Color::White;
 
@@ -372,8 +397,8 @@ void MainForm::BuildHome()
 void MainForm::BuildGame()
 {
     pnlGame = gcnew Panel();
-    pnlGame->Location = Drawing::Point(176, 8);
-    pnlGame->Size = Drawing::Size(760, 724);
+    pnlGame->Location = Drawing::Point(8, 68);
+    pnlGame->Size = Drawing::Size(this->ClientSize.Width - 16, this->ClientSize.Height - 92);
     pnlGame->AutoScroll = true;
     pnlGame->BackColor = Drawing::Color::White;
 
@@ -561,8 +586,8 @@ void MainForm::BuildGame()
 void MainForm::BuildSettings()
 {
     pnlSettings = gcnew Panel();
-    pnlSettings->Location = Drawing::Point(176, 8);
-    pnlSettings->Size = Drawing::Size(760, 724);
+    pnlSettings->Location = Drawing::Point(8, 68);
+    pnlSettings->Size = Drawing::Size(this->ClientSize.Width - 16, this->ClientSize.Height - 92);
     pnlSettings->AutoScroll = true;
     pnlSettings->BackColor = Drawing::Color::White;
 
