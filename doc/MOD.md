@@ -88,7 +88,7 @@ translate zh start_block:
 ```
 
 > 对话、菜单选项、界面显示文本（text / textbutton / button 等）都会被 `old/new` 匹配替换。
-> 详见 `README.md` 的「聊天分支导图 / 翻译流水线」章节。
+> 详见 `../README.md` 的「聊天分支导图 / 翻译流水线」章节。
 
 ---
 
@@ -200,4 +200,4 @@ patcher credit --text [--game <名>]
 - **文件级 mod**：路径相对于 `game/`，想替换 `game/script.rpy` 就在 mod 根放 `script.rpy`
 - **翻译 mod**：`old` 字符串必须和游戏原文**逐字一致**（含标点、空格）才能匹配
 - **热注入 mod**：`on_attach()` 里不要做阻塞主线程太久的操作；要访问游戏对象需知道其模块/变量名（可先用 `dir()` / 游戏源码确认）
-- 调试图文见 `README.md` 的「日志」章节（`patcher.log` 含 handler 选择、解包/注入进度与错误码）
+- 调试图文见 `../README.md` 的「日志」章节（`patcher.log` 含 handler 选择、解包/注入进度与错误码）
