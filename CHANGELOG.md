@@ -4,6 +4,9 @@
 
 ## v1.3.0（开发中）
 
+### 文档
+- 新增 [MOD.md](MOD.md)：mod 开发 / 调用文档，覆盖**文件级 mod**（build 合并）、**翻译 mod**（translate build 生成 old/new）、**热注入 mod**（hotinject 注入，`mod_main.py` 的 `on_attach()` 生命周期与宿主 Python 访问）三类，含目录结构、调用命令、最小示例与综合汉化示例。
+
 ### 新增 / 变更
 - **聊天 / 选择分支解析与导图生成**：新增 `analyze/branch`，解析游戏脚本（.rpy）中的 `label` 与 `menu` 选择分支，构建分支图并导出 **四种格式**：
   - `tree`：文本树（从 `start` 深度优先展开菜单选项与跳转链，最直观）

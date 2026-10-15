@@ -326,6 +326,7 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - 分卷 ZIP 导出（自研 `util/zip`，仅依赖 zlib）
 - 翻译流水线（提取对话/菜单/界面文本 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod，统一 old/new 字符串翻译）
 - 聊天 / 选择分支解析与导图生成（tree / mermaid / dot / json 四种格式，CLI + GUI）
+- Mod 文档（[MOD.md](MOD.md)）：文件级 mod / 翻译 mod / 热注入 mod 的目录结构、调用命令与生命周期
 - 游戏别名管理
 - Windows GUI（功能对齐 CLI，含检查更新与测试版通道）
 - 跨平台 CI 编译与自动 / 手动发布
