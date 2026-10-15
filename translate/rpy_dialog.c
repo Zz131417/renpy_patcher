@@ -1,7 +1,12 @@
-/* translate/rpy_dialog.c —— Ren'Py 对话提取 / 翻译 mod 生成
- * 第一版：仅提取 say 对话（说话人+字符串 / 裸字符串 / 多行三引号），
- * 跳过 menu 菜单选项、screen/界面显示语句、赋值与结构行。
- * 中间交换格式为 JSON（见 json_io.c），本文件不涉及 CSV。
+/* translate/rpy_dialog.c —— Ren'Py 可翻译文本提取 / 翻译 mod 生成
+ *
+ * 提取范围：
+ *   - 对话(say)：说话人+字符串 / 裸字符串 / 多行三引号
+ *   - 菜单(menu)：menu 选项文本（"选项": / "选项" if ...:）
+ *   - 界面(ui)：screen 内显示文本（text / textbutton / button 的 text / hover / idle / tooltip 等）
+ *
+ * 中间交换格式为 JSON（见 json_io.c）。生成翻译 mod 用 Ren'Py 的 old/new 字符串翻译，
+ * 对三种类型统一生效（Ren'Py 会自动匹配对话、菜单选项与界面显示文本）。
  */
 #include "translate/rpy_dialog.h"
 #include "util/dir_walk.h"
@@ -115,6 +120,52 @@ static const char *skip_ws(const char *p) {
     return p;
 }
 
+/* 界面显示文本关键字（其后第一个字符串作为可翻译界面文本） */
+static const char *ui_kw[] = {
+    "text ", "textbutton ", "button ", "hover ", "idle ",
+    "selected_idle ", "selected_hover ", "tooltip ", NULL
+};
+
+/* 菜单选项：行首直接是引号字符串，其后紧跟 ':' 或 "if" */
+static int parse_menu_option(const char *work, char **source, char **anchor) {
+    const char *p = skip_ws(work);
+    if (*p != '"' && *p != '\'') return 0;
+    char *s; const char *after = parse_string(p, &s);
+    if (!after) { free(s); return 0; }
+    const char *a = skip_ws(after);
+    if (*a == ':' || (a[0] == 'i' && a[1] == 'f' && (a[2] == ' ' || a[2] == '\t' || a[2] == '('))) {
+        *source = s;
+        size_t alen = (size_t)(a - work);
+        char *anc = malloc(alen + 1); memcpy(anc, work, alen); anc[alen] = 0;
+        *anchor = anc;
+        return 1;
+    }
+    free(s);
+    return 0;
+}
+
+/* 界面文本：行以 ui 关键字开头，其后第一个字符串作为可翻译文本 */
+static int parse_ui_line(const char *work, char **source, char **anchor) {
+    for (int i = 0; ui_kw[i]; i++) {
+        size_t k = strlen(ui_kw[i]);
+        if (strncmp(work, ui_kw[i], k) == 0) {
+            const char *p = skip_ws(work + k);
+            if (*p == '"' || *p == '\'') {
+                char *s; const char *after = parse_string(p, &s);
+                if (after) {
+                    *source = s;
+                    size_t alen = (size_t)(p - work);
+                    char *anc = malloc(alen + 1); memcpy(anc, work, alen); anc[alen] = 0;
+                    *anchor = anc;
+                    return 1;
+                }
+            }
+            return 0; /* 关键字匹配但无字面量字符串，不算 */
+        }
+    }
+    return 0;
+}
+
 static int is_display_keyword(const char *id) {
     static const char *kw[] = {
         "text", "textbutton", "button", "label", "image", "add", "hbox", "vbox",
@@ -123,17 +174,6 @@ static int is_display_keyword(const char *id) {
     };
     for (int i = 0; kw[i]; i++) if (strcmp(id, kw[i]) == 0) return 1;
     return 0;
-}
-
-static int first_string_followed_by_colon(const char *work) {
-    const char *p = skip_ws(work);
-    if (*p != '"' && *p != '\'') return 0;
-    char *s; const char *after = parse_string(p, &s);
-    if (!after) { free(s); return 0; }
-    after = skip_ws(after);
-    int r = (*after == ':') ? 1 : 0;
-    free(s);
-    return r;
 }
 
 static int parse_say_line(const char *work, char **speaker, char **source, char **anchor) {
@@ -182,7 +222,7 @@ static int parse_say_line(const char *work, char **speaker, char **source, char 
 
 static int is_structural_line(const char *s) {
     static const char *kw[] = {
-        "label ", "menu:", "menu ", "screen ", "if ", "elif ", "else:", "while ",
+        "label ", "menu ", "screen ", "if ", "elif ", "else:", "while ",
         "for ", "python:", "init ", "transform ", "style ", "image ", "define ",
         "default ", "$ ", "return", "jump ", "call ", "pause", "show ", "hide ",
         "scene ", "play ", "stop ", "camera ", "voice ", "narrator ", "window ", NULL
@@ -209,6 +249,18 @@ static int scan_open_triple(const char *s) {
     return trip;
 }
 
+static void append_entry(dialog_entry_t **arr, size_t *n, size_t *cap,
+                         const char *rel, int lineno, const char *type,
+                         const char *speaker, char *source, char *anchor) {
+    if (*n >= *cap) { *cap = *cap ? *cap*2 : 32; *arr = realloc(*arr, *cap * sizeof(**arr)); }
+    dialog_entry_t e; memset(&e, 0, sizeof(e));
+    e.file = dup_str(rel); e.line = lineno;
+    e.type = dup_str(type);
+    e.speaker = dup_str(speaker ? speaker : "");
+    e.source = source; e.target = dup_str(""); e.anchor = anchor;
+    (*arr)[(*n)++] = e;
+}
+
 static void extract_file(const char *rel, const char *full, dialog_entry_t **arr, size_t *n, size_t *cap) {
     FILE *f = fopen(full, "rb");
     if (!f) return;
@@ -227,19 +279,22 @@ static void extract_file(const char *rel, const char *full, dialog_entry_t **arr
         if (!in_triple) {
             if (!*work) continue;
             if (is_structural_line(work)) continue;
-            if (first_string_followed_by_colon(work)) continue;
             if (scan_open_triple(work)) {
                 in_triple = 1; acc_start = lineno;
                 acc = dup_str(work);
                 continue;
             }
-            char *speaker = NULL, *source = NULL, *anchor = NULL;
-            if (parse_say_line(work, &speaker, &source, &anchor)) {
-                if (*n >= *cap) { *cap = *cap ? *cap*2 : 32; *arr = realloc(*arr, *cap * sizeof(**arr)); }
-                dialog_entry_t e; memset(&e, 0, sizeof(e));
-                e.file = dup_str(rel); e.line = lineno;
-                e.speaker = speaker; e.source = source; e.target = dup_str(""); e.anchor = anchor;
-                (*arr)[(*n)++] = e;
+            char *source = NULL, *anchor = NULL;
+            if (parse_menu_option(work, &source, &anchor)) {
+                append_entry(arr, n, cap, rel, lineno, "menu", "", source, anchor);
+            } else if (parse_ui_line(work, &source, &anchor)) {
+                append_entry(arr, n, cap, rel, lineno, "ui", "", source, anchor);
+            } else {
+                char *spk = NULL;
+                if (parse_say_line(work, &spk, &source, &anchor)) {
+                    append_entry(arr, n, cap, rel, lineno, "say", spk, source, anchor);
+                    free(spk);
+                }
             }
         } else {
             size_t la = strlen(acc), lb = strlen(work);
@@ -249,13 +304,13 @@ static void extract_file(const char *rel, const char *full, dialog_entry_t **arr
             free(acc); acc = t;
             if (!scan_open_triple(acc)) {
                 in_triple = 0;
-                char *speaker = NULL, *source = NULL, *anchor = NULL;
-                if (parse_say_line(acc, &speaker, &source, &anchor)) {
-                    if (*n >= *cap) { *cap = *cap ? *cap*2 : 32; *arr = realloc(*arr, *cap * sizeof(**arr)); }
-                    dialog_entry_t e; memset(&e, 0, sizeof(e));
-                    e.file = dup_str(rel); e.line = acc_start;
-                    e.speaker = speaker; e.source = source; e.target = dup_str(""); e.anchor = anchor;
-                    (*arr)[(*n)++] = e;
+                char *spk = NULL, *source = NULL, *anchor = NULL;
+                if (parse_say_line(acc, &spk, &source, &anchor)) {
+                    append_entry(arr, n, cap, rel, acc_start, "say", spk, source, anchor);
+                    free(spk);
+                } else {
+                    if (source) free(source);
+                    if (anchor) free(anchor);
                 }
                 free(acc); acc = NULL;
             }
@@ -282,14 +337,14 @@ int extract_dialogs(const char *dir, dialog_entry_t **out, size_t *count) {
     }
     free_files(files, n);
     *out = arr; *count = cnt;
-    log_info("提取对话: %zu 条", cnt);
+    log_info("提取可翻译文本: %zu 条", cnt);
     return RP_OK;
 }
 
 void free_dialog_entries(dialog_entry_t *arr, size_t count) {
     if (!arr) return;
     for (size_t i = 0; i < count; i++) {
-        free(arr[i].file); free(arr[i].speaker); free(arr[i].source);
+        free(arr[i].file); free(arr[i].type); free(arr[i].speaker); free(arr[i].source);
         free(arr[i].target); free(arr[i].anchor);
     }
     free(arr);
@@ -339,11 +394,13 @@ int build_translation_mod(const dialog_entry_t *arr, size_t count,
         FILE *of = fopen(outpath, "wb");
         if (!of) { log_error("无法写入翻译文件: %s", outpath); continue; }
         fprintf(of, "# 由 Ren'Py Patcher 生成 (translate %s)\n", lang);
-        fprintf(of, "translate %s:\n\n", lang);
+        /* Ren'Py 要求 translate 块有名：用文件名 base + _block 作为唯一块名 */
+        fprintf(of, "translate %s %s_block:\n\n", lang, fname);
         for (size_t i = 0; i < count; i++) {
             if (strcmp(arr[i].file, uniq[u]) != 0) continue;
             if (!arr[i].target || !arr[i].target[0]) continue;
-            fprintf(of, "    # %s:%d\n", arr[i].file, arr[i].line);
+            fprintf(of, "    # %s:%d  [%s]\n", arr[i].file, arr[i].line,
+                    arr[i].type ? arr[i].type : "say");
             fprintf(of, "    old "); emit_rpy_string(of, arr[i].source); fprintf(of, "\n");
             fprintf(of, "    new "); emit_rpy_string(of, arr[i].target); fprintf(of, "\n\n");
             written++;

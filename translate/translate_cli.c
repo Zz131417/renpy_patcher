@@ -2,13 +2,13 @@
  *
  * 子命令（argv[0] = "translate"）：
  *   translate extract <解包目录> -o dialogs.json
- *       提取目录下所有 .rpy 的对话，导出 JSON（file,line,speaker,source,target）
+ *       提取目录下所有 .rpy 的可翻译文本（对话/菜单/界面），导出 JSON（file,line,type,speaker,source,target）
  *   translate ai <dialogs.json> -o out.json
  *       [--from 源语言] [--to 目标语言] [--ai-base URL] [--ai-key KEY] [--ai-model M]
  *       用 AI 批量翻译 JSON 中的 source，结果写入 target
  *   translate human <dialogs.json> --lang zh -o mod_dir
  *   translate build <dialogs.json> --lang zh -o mod_dir
- *       把有译文的条目生成 Ren'Py 翻译 mod（tl/<lang>/）
+ *       把有译文的条目（对话/菜单/界面，统一用 old/new）生成 Ren'Py 翻译 mod（tl/<lang>/）
  *
  * 工作流：
  *   1) extract 解包目录 -> dialogs.json
@@ -34,7 +34,7 @@ static const char *get_opt(int argc, char **argv, int start, const char *key) {
 int cmd_translate(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "用法:\n");
-        fprintf(stderr, "  translate extract <解包目录> -o dialogs.json\n");
+        fprintf(stderr, "  translate extract <解包目录> -o dialogs.json   （提取对话/菜单/界面文本）\n");
         fprintf(stderr, "  translate ai <dialogs.json> -o out.json [--from 语言] [--to 语言] [--ai-base URL] [--ai-key KEY] [--ai-model M]\n");
         fprintf(stderr, "  translate human <dialogs.json> --lang zh -o mod_dir\n");
         fprintf(stderr, "  translate build <dialogs.json> --lang zh -o mod_dir\n");

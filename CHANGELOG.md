@@ -8,6 +8,8 @@
 
 ### 新增 / 变更
 - **导入整个游戏压缩包**：CLI `patcher import <game.zip> -o out_dir [--name 别名]` + GUI 游戏登记，可直接吃整个游戏的 `.zip`，自动解压并定位内部首个 `.rpa`（可选顺手登记别名）。底层新增纯 C 的 `util/zip_extract`（store / deflate，支持分卷）。
+
+- **翻译流水线补齐菜单 / 界面文本**：`translate extract` 现在除对话（say）外，还提取 **菜单选项（menu）** 与 **界面显示文本（ui，含 `text` / `textbutton` / `button` 的 text / `hover` / `idle` / `tooltip` 等）**，JSON 增加 `type` 字段区分（`say` / `menu` / `ui`）。生成翻译 mod 统一用 Ren'Py 的 `old "原文" / new "译文"` 字符串翻译（修复了原本 `translate <lang>:` 缺块名的语法错误），对话、菜单、界面三种文本均可被 Ren'Py 自动匹配替换。
 - **导出为 exe**：把目录（游戏 / mod）打成单个 `.exe` 便于分发：
   - 自解压安装包 exe：双击解压到「同目录/同名(去 `.exe`)」文件夹并打开
   - 启动器 exe：解压后自动运行所填启动命令（如 `game.exe`）

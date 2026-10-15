@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-/* translate/json_io.c —— 对话条目 JSON 读写（最小自研，无第三方依赖） */
+/* translate/json_io.c —— 可翻译文本条目 JSON 读写（最小自研，无第三方依赖） */
 #include "translate/json_io.h"
 #include "util/log.h"
 #include <stdio.h>
@@ -39,7 +39,9 @@ int write_dialogs_json(const dialog_entry_t *arr, size_t count, const char *path
     for (size_t i = 0; i < count; i++) {
         fprintf(f, "  {\"file\":");
         json_esc(f, arr[i].file ? arr[i].file : "");
-        fprintf(f, ",\"line\":%d,\"speaker\":", arr[i].line);
+        fprintf(f, ",\"line\":%d,\"type\":", arr[i].line);
+        json_esc(f, arr[i].type ? arr[i].type : "say");
+        fputs(",\"speaker\":", f);
         json_esc(f, arr[i].speaker ? arr[i].speaker : "");
         fputs(",\"source\":", f);
         json_esc(f, arr[i].source ? arr[i].source : "");
@@ -121,6 +123,7 @@ static const char *parse_obj(const char *p, dialog_entry_t *e) {
     memset(e, 0, sizeof(*e));
     e->speaker = strdup("");
     e->target = strdup("");
+    e->type = strdup("say");
     if (*p != '{') return NULL;
     p++;
     while (*p) {
@@ -139,6 +142,7 @@ static const char *parse_obj(const char *p, dialog_entry_t *e) {
             else if (!strcmp(key, "speaker")) { free(e->speaker); e->speaker = val; }
             else if (!strcmp(key, "source"))  e->source = val;
             else if (!strcmp(key, "target"))  { free(e->target); e->target = val; }
+            else if (!strcmp(key, "type"))    { free(e->type); e->type = val; }
             else free(val);
         } else if (isdigit((unsigned char)*p) || *p=='-') {
             int v; const char *np = parse_int(p, &v);

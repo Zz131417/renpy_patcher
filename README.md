@@ -224,10 +224,10 @@ patcher export-exe game_dir -o launcher.exe --launcher "game.exe"
 patcher translate extract <解包目录> -o dialogs.json
 
 # 2) 二选一填充译文：
-#    a) AI 翻译：调用 OpenAI 兼容接口批量翻译（需 RP_AI_API_KEY）
+#    a) AI 翻译：调用 OpenAI 兼容接口批量翻译（需 RP_AI_API_KEY），对话/菜单/界面一并发翻
 #       RP_AI_API_KEY=sk-xxx patcher translate ai dialogs.json -o dialogs_t.json \
 #           [--ai-base https://api.openai.com/v1] [--ai-model gpt-4o-mini] [--to Chinese]
-#    b) 人工翻译：直接编辑 dialogs.json 里每行的 "target" 字段
+#    b) 人工翻译：直接编辑 dialogs.json 里每行的 "target" 字段（JSON 含 type 字段标明 say/menu/ui）
 #
 # 3) 生成翻译 mod（tl/<lang>/*.rpy）
 patcher translate human dialogs_t.json --lang zh -o translation_mod
@@ -238,8 +238,11 @@ patcher build <游戏.rpa|别名> -m translation_mod -o patched.rpa
 
 要点：
 - 中间格式为 **JSON**（`file/line/speaker/source/target`），规避 CSV 引号与换行的转义坑。
-- 仅提取 **对话**（say）：说话人+文本、裸对话、多行三引号均可；菜单选项、界面显示语句、赋值与结构行已自动跳过。
-- 按「对话优先」路线推进；菜单、界面文本翻译在规划中。
+- 提取 **对话（say）+ 菜单（menu）+ 界面（ui）** 三类可翻译文本：
+  - 对话：说话人+文本、裸对话、多行三引号均可；
+  - 菜单：menu 选项文本（`"选项":` / `"选项" if ...:`）；
+  - 界面：screen 内显示文本（`text` / `textbutton` / `button` 的 text / `hover` / `idle` / `tooltip` 等）。
+- 三类统一用 Ren'Py 的 **old/new 字符串翻译**回填（`translate <lang> <block>:` 块），Ren'Py 自动匹配替换对话、菜单选项与界面显示文本。
 - Ren'Py 会优先加载 `tl/<lang>/` 下的译文覆盖原文，无需重排索引。
 
 ## GUI 版（Windows / .NET WinForms）
@@ -305,12 +308,12 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - 热注入（Windows，运行时进程注入）
 - 来源声明（自动 / 手动 / 仅导出文字）
 - 分卷 ZIP 导出（自研 `util/zip`，仅依赖 zlib）
-- 对话翻译流水线（提取 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod）
+- 翻译流水线（提取对话/菜单/界面文本 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod，统一 old/new 字符串翻译）
 - 游戏别名管理
 - Windows GUI（功能对齐 CLI，含检查更新与测试版通道）
 - 跨平台 CI 编译与自动 / 手动发布
 
-> 能力范围与最新进展以 [CHANGELOG.md](CHANGELOG.md) 为准；菜单、界面文本翻译等按计划推进中。
+> 能力范围与最新进展以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
 ## 许可证
 本项目采用**非商业许可证**：个人学习、研究、非商业用途可自由使用与修改；**禁止任何商业用途**，商业使用需单独书面授权。详见 [`LICENSE`](LICENSE)。
