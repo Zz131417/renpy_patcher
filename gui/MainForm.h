@@ -27,6 +27,17 @@
 
 namespace RenPyPatcherGUI {
 
+using namespace System::Runtime::InteropServices;
+
+// Windows DWM 模糊 P/Invoke（命名空间级，供 MainForm::ApplyBlur 调用）
+[StructLayout(LayoutKind::Sequential)]
+value struct AccentPolicy { int nAccentState; int nFlags; int nColor; int nAnimationId; };
+[StructLayout(LayoutKind::Sequential)]
+value struct WinCompAttrData { int nAttribute; System::IntPtr pData; unsigned int ulDataSize; };
+[DllImport("user32.dll")]
+bool SetWindowCompositionAttribute(System::IntPtr hWnd, WinCompAttrData^ data);
+
+
 using namespace System;
 using namespace System::Runtime::InteropServices;
 using namespace System::Windows::Forms;
@@ -287,13 +298,6 @@ private:
     void btnResetUI_Click(Object^, EventArgs^);
     void AnimTick(Object^ sender, EventArgs^);   // 页面切换滑入动画 Tick
 
-    // Windows DWM 模糊 P/Invoke
-    [System::Runtime::InteropServices::StructLayout(System::Runtime::InteropServices::LayoutKind::Sequential)]
-    value struct AccentPolicy { int nAccentState; int nFlags; int nColor; int nAnimationId; };
-    [System::Runtime::InteropServices::StructLayout(System::Runtime::InteropServices::LayoutKind::Sequential)]
-    value struct WinCompAttrData { int nAttribute; System::IntPtr pData; unsigned int ulDataSize; };
-    [DllImport("user32.dll")]
-    static bool SetWindowCompositionAttribute(IntPtr hWnd, WinCompAttrData^ data);
     void lnkProject_Click(Object^, LinkLabelLinkClickedEventArgs^);
 
     // ---- 报错显示 / 防崩溃 辅助 ----
