@@ -28,6 +28,7 @@
 namespace RenPyPatcherGUI {
 
 using namespace System;
+using namespace System::Runtime::InteropServices;
 using namespace System::Windows::Forms;
 using namespace System::IO;
 using namespace System::Drawing;
@@ -58,6 +59,16 @@ public:
     String^ Error;
     UpdateResult(bool h, bool m, String^ v, String^ t, String^ u, int lb, int cb, bool pre, String^ err)
         : HasUpdate(h), Manual(m), Version(v), Tag(t), Url(u), LatestBuild(lb), CurBuild(cb), Prerelease(pre), Error(err) {}
+};
+
+// UI 界面设置（值类型，含托管字符串成员）
+public value struct GuiSettings
+{
+    bool round;          // 圆角
+    bool anim;           // 动画
+    bool blur;           // 背景模糊
+    String^ fontFamily;  // 字体族
+    float fontSize;      // 基准字号
 };
 
 public ref class MainForm : public Form
@@ -176,6 +187,16 @@ private:
     Button^   _activeBtn;
     String^   _branchOutPath;   // 分支导图临时输出路径（DoWork 写入，Completed 读取显示）
 
+    // ---- UI 设置（界面外观，持久化到配置文件）----
+    GuiSettings g_ui;                 // 当前界面设置（构造早期由 InitUI 载入）
+    // 界面设置分组框控件
+    CheckBox^ chkRound;   // 圆角开关
+    CheckBox^ chkAnim;    // 动画开关
+    CheckBox^ chkBlur;    // 背景模糊开关
+    ComboBox^ cboFont;    // 字体族
+    ComboBox^ cboFontSize;// 字号
+    Button^   btnResetUI; // 恢复默认
+
     // ---- 页面构建 / 切换 ----
     void BuildNav();
     void OnResizeForm(Object^, EventArgs^);   // 窗口缩放时居中导航条 + 重算页面尺寸
@@ -250,6 +271,28 @@ private:
     String^ ConfigPath();
     void LoadConfig();
     void SaveConfig();
+
+    // UI 设置：载入/初始化/应用
+    void InitUI();                    // 载入设置并初始化字体（须在 Build* 之前调用）
+    void ApplyUISettings();           // 应用圆角 + 模糊 + 字体到整个窗体
+    void ApplyFontToAll(Control^ c);  // 递归应用字体（族/大小）
+    void ApplyRoundToAll(Control^ c, bool on);  // 递归应用圆角（按钮/输入框/下拉）
+    void ApplyBlur(bool on);          // Windows DWM 背景模糊（ACCENT_ENABLE_BLURBEHIND）
+
+    void chkRound_CheckedChanged(Object^, EventArgs^);
+    void chkAnim_CheckedChanged(Object^, EventArgs^);
+    void chkBlur_CheckedChanged(Object^, EventArgs^);
+    void cboFont_SelectedIndexChanged(Object^, EventArgs^);
+    void cboFontSize_SelectedIndexChanged(Object^, EventArgs^);
+    void btnResetUI_Click(Object^, EventArgs^);
+
+    // Windows DWM 模糊 P/Invoke
+    [StructLayout(LayoutKind::Sequential)]
+    ref struct AccentPolicy { int nAccentState; int nFlags; int nColor; int nAnimationId; };
+    [StructLayout(LayoutKind::Sequential)]
+    ref struct WinCompAttrData { int nAttribute; IntPtr pData; unsigned int ulDataSize; };
+    [DllImport("user32.dll")]
+    static bool SetWindowCompositionAttribute(IntPtr hWnd, WinCompAttrData^ data);
     void lnkProject_Click(Object^, LinkLabelLinkClickedEventArgs^);
 
     // ---- 报错显示 / 防崩溃 辅助 ----

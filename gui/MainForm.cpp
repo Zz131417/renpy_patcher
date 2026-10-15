@@ -25,11 +25,30 @@ public:
     static initonly Drawing::Color MUTE      = Drawing::Color::FromArgb(107, 114, 128);
     static initonly Drawing::Color CONSOLE_B = Drawing::Color::FromArgb(28, 30, 38);
     static initonly Drawing::Color CONSOLE_F = Drawing::Color::FromArgb(214, 222, 235);
-    static initonly Drawing::Font^  FONT     = gcnew Drawing::Font(L"Microsoft YaHei", 9.5f);
-    static initonly Drawing::Font^  FONT_B   = gcnew Drawing::Font(L"Microsoft YaHei", 9.5f, FontStyle::Bold);
-    static initonly Drawing::Font^  FONT_TITLE = gcnew Drawing::Font(L"Microsoft YaHei", 20.0f, FontStyle::Bold);
-    static initonly Drawing::Font^  FONT_SUB  = gcnew Drawing::Font(L"Microsoft YaHei", 10.0f);
-    static initonly Drawing::Font^  FONT_MONO = gcnew Drawing::Font(L"Consolas", 9.5f);
+    static Drawing::Font^  FONT;       // 可变（运行时按设置初始化/切换）
+    static Drawing::Font^  FONT_B;
+    static Drawing::Font^  FONT_TITLE;
+    static Drawing::Font^  FONT_SUB;
+    static Drawing::Font^  FONT_MONO;
+
+    // 默认字体（静态构造）
+    static UI() {
+        FONT      = gcnew Drawing::Font(L"Microsoft YaHei", 9.5f);
+        FONT_B    = gcnew Drawing::Font(L"Microsoft YaHei", 9.5f, FontStyle::Bold);
+        FONT_TITLE= gcnew Drawing::Font(L"Microsoft YaHei", 20.0f, FontStyle::Bold);
+        FONT_SUB  = gcnew Drawing::Font(L"Microsoft YaHei", 10.0f);
+        FONT_MONO = gcnew Drawing::Font(L"Consolas", 9.5f);
+    }
+    // 按用户设置重设字体（族 + 基准字号），保留各用途相对比例
+    static void InitFonts(String^ family, float baseSize) {
+        if (!family || family->Length == 0) family = L"Microsoft YaHei";
+        if (baseSize < 6) baseSize = 6; if (baseSize > 24) baseSize = 24;
+        FONT      = gcnew Drawing::Font(family, baseSize);
+        FONT_B    = gcnew Drawing::Font(family, baseSize, FontStyle::Bold);
+        FONT_TITLE= gcnew Drawing::Font(family, baseSize * 2.1f, FontStyle::Bold);
+        FONT_SUB  = gcnew Drawing::Font(family, baseSize * 1.06f);
+        FONT_MONO = gcnew Drawing::Font(L"Consolas", baseSize);
+    }
 };
 
 /* 统一按钮样式：primary=强调色实心，否则浅灰 */
@@ -198,6 +217,8 @@ MainForm::MainForm()
     log_set_tag("gui");
     game_mgr_init(nullptr);
 
+    InitUI();   // 载入 UI 设置并初始化字体（须在 Build* 之前，使新建控件使用新字体）
+
     BuildNav();
     BuildHome();
     BuildGame();
@@ -229,6 +250,7 @@ MainForm::MainForm()
     // 窗口缩放时居中悬浮导航条并重算页面尺寸
     this->Resize += gcnew EventHandler(this, &MainForm::OnResizeForm);
     OnResizeForm(nullptr, EventArgs::Empty);
+    ApplyUISettings();   // 应用圆角(输入框/下拉) + 背景模糊 + 递归字体
 
     RefreshGames();
     AppendLog(gcnew String("Ren'Py Patcher GUI ") + gcnew String(RPATCHER_VERSION_STRING) + L" 已启动");
@@ -265,14 +287,14 @@ void MainForm::BuildNav()
     shadow->Location = Drawing::Point(0, 4);
     shadow->Size = Drawing::Size(cardW, cardH);
     shadow->BackColor = Drawing::Color::FromArgb(45, 15, 23, 42);
-    shadow->Region = MakeRoundRegion(cardW, cardH, R);
+    shadow->Region = g_ui.round ? MakeRoundRegion(cardW, cardH, R) : nullptr;
 
     // 卡片层（白底圆角）
     Panel^ card = gcnew Panel();
     card->Location = Drawing::Point(0, 0);
     card->Size = Drawing::Size(cardW, cardH);
     card->BackColor = Drawing::Color::White;
-    card->Region = MakeRoundRegion(cardW, cardH, R);
+    card->Region = g_ui.round ? MakeRoundRegion(cardW, cardH, R) : nullptr;
 
     // 三个水平排列的导航按钮
     btnNavGame     = gcnew Button();
@@ -309,6 +331,22 @@ void MainForm::ShowPage(int idx)
     pnlHome->Visible     = (idx == PAGE_HOME);
     pnlSettings->Visible = (idx == PAGE_SETTINGS);
 
+    // 动画：选中页从下方轻微滑入（关闭动画则直接定位）
+    Panel^ cur = (idx == PAGE_GAME) ? pnlGame : (idx == PAGE_HOME) ? pnlHome : pnlSettings;
+    if (g_ui.anim && cur) {
+        int top = 68;
+        cur->Top = top + 14;
+        System::Windows::Forms::Timer^ tm = gcnew System::Windows::Forms::Timer();
+        tm->Interval = 12;
+        tm->Tag = cur;
+        tm->Tick += gcnew EventHandler([this, tm, top](Object^, EventArgs^) {
+            Panel^ p = safe_cast<Panel^>(tm->Tag);
+            if (p->Top > top) { p->Top -= 3; if (p->Top < top) p->Top = top; }
+            else { p->Top = top; tm->Stop(); }
+        });
+        tm->Start();
+    }
+
     Drawing::Color sel = UI::ACCENT;                 // 选中：蓝底白字
     Drawing::Color nor = Drawing::Color::Transparent;    // 未选：透明（显白卡底）
     Drawing::Color selF = Drawing::Color::White;
@@ -335,6 +373,73 @@ void MainForm::OnResizeForm(Object^, EventArgs^)
     pnlGame->Location = Drawing::Point(8, top);      pnlGame->Size = Drawing::Size(pw, ph);
     pnlHome->Location = Drawing::Point(8, top);      pnlHome->Size = Drawing::Size(pw, ph);
     pnlSettings->Location = Drawing::Point(8, top);  pnlSettings->Size = Drawing::Size(pw, ph);
+}
+
+/* ===================== UI 设置 ===================== */
+void MainForm::InitUI()
+{
+    // 默认值
+    g_ui.round = true; g_ui.anim = true; g_ui.blur = false;
+    g_ui.fontFamily = L"Microsoft YaHei"; g_ui.fontSize = 9.5f;
+    try {
+        String^ p = ConfigPath();
+        if (System::IO::File::Exists(p)) {
+            array<String^>^ lines = System::IO::File::ReadAllLines(p);
+            for each (String^ line in lines) {
+                if (line->StartsWith(L"uiRound=")) { String^ v = line->Substring(8)->Trim()->ToLower(); g_ui.round = (v == L"1" || v == L"true"); }
+                else if (line->StartsWith(L"uiAnim=")) { String^ v = line->Substring(7)->Trim()->ToLower(); g_ui.anim = (v == L"1" || v == L"true"); }
+                else if (line->StartsWith(L"uiBlur=")) { String^ v = line->Substring(7)->Trim()->ToLower(); g_ui.blur = (v == L"1" || v == L"true"); }
+                else if (line->StartsWith(L"uiFont=")) { g_ui.fontFamily = line->Substring(7)->Trim(); }
+                else if (line->StartsWith(L"uiSize=")) { float v; if (System::Single::TryParse(line->Substring(7)->Trim(), v)) g_ui.fontSize = v; }
+            }
+        }
+    } catch (...) {}
+    if (g_ui.fontSize < 6) g_ui.fontSize = 6; if (g_ui.fontSize > 24) g_ui.fontSize = 24;
+    UI::InitFonts(g_ui.fontFamily, g_ui.fontSize);
+}
+
+void MainForm::ApplyUISettings()
+{
+    ApplyFontToAll(this);
+    ApplyRoundToAll(this, g_ui.round);
+    ApplyBlur(g_ui.blur);
+}
+
+void MainForm::ApplyFontToAll(Control^ c)
+{
+    if (!c) return;
+    if (c->Font) {
+        FontStyle st = c->Font->Style;
+        float cur = c->Font->Size;
+        float ns = g_ui.fontSize * (cur / 9.5f);
+        String^ fam = (c->Font->Name->IndexOf(L"Consolas") >= 0) ? L"Consolas" : g_ui.fontFamily;
+        try { c->Font = gcnew Drawing::Font(fam, ns, st); } catch (...) {}
+    }
+    for each (Control^ ch in c->Controls) ApplyFontToAll(ch);
+}
+
+void MainForm::ApplyRoundToAll(Control^ c, bool on)
+{
+    if (!c) return;
+    if (dynamic_cast<Button^>(c))      c->Region = on ? MakeRoundRegion(c->Width, c->Height, 6) : nullptr;
+    else if (dynamic_cast<TextBox^>(c)) c->Region = on ? MakeRoundRegion(c->Width, c->Height, 4) : nullptr;
+    else if (dynamic_cast<ComboBox^>(c)) c->Region = on ? MakeRoundRegion(c->Width, c->Height, 4) : nullptr;
+    for each (Control^ ch in c->Controls) ApplyRoundToAll(ch, on);
+}
+
+void MainForm::ApplyBlur(bool on)
+{
+    try {
+        AccentPolicy ap;
+        ap.nAccentState = on ? 3 : 0;   // 3 = ACCENT_ENABLE_BLURBEHIND, 0 = ACCENT_DISABLED
+        ap.nFlags = 0; ap.nColor = 0; ap.nAnimationId = 0;
+        WinCompAttrData d;
+        d.nAttribute = 19;  // WCA_ACCENT_POLICY
+        d.ulDataSize = (unsigned int)System::Runtime::InteropServices::Marshal::SizeOf(AccentPolicy::typeid);
+        pin_ptr<AccentPolicy> pp = &ap;
+        d.pData = IntPtr(pp);
+        SetWindowCompositionAttribute(this->Handle, d);
+    } catch (...) {}
 }
 
 /* ===================== 首页 ===================== */
@@ -646,6 +751,36 @@ void MainForm::BuildSettings()
     StyleBtn(btnCheckUpdate, true);
     btnCheckUpdate->Click += gcnew EventHandler(this, &MainForm::btnCheckUpdate_Click);
     chkUpdateBeta->CheckedChanged += gcnew EventHandler(this, &MainForm::chkUpdateBeta_CheckedChanged);
+
+    // ---- 界面设置 ----
+    GroupBox^ gbUI = MakeGroup(L"界面设置（实时生效，自动保存到本地配置）", 12, 540, 736, 200);
+    chkRound = gcnew CheckBox();  chkRound->Location = Drawing::Point(14, 28); chkRound->Size = Drawing::Size(680, 24);
+    chkRound->Font = UI::FONT; chkRound->ForeColor = UI::TEXT; chkRound->Text = L"圆角（导航卡片 / 按钮 / 输入框）"; chkRound->Checked = g_ui.round;
+    chkAnim = gcnew CheckBox();   chkAnim->Location = Drawing::Point(14, 58); chkAnim->Size = Drawing::Size(680, 24);
+    chkAnim->Font = UI::FONT; chkAnim->ForeColor = UI::TEXT; chkAnim->Text = L"动画（页面切换滑入效果）"; chkAnim->Checked = g_ui.anim;
+    chkBlur = gcnew CheckBox();   chkBlur->Location = Drawing::Point(14, 88); chkBlur->Size = Drawing::Size(680, 24);
+    chkBlur->Font = UI::FONT; chkBlur->ForeColor = UI::TEXT; chkBlur->Text = L"背景模糊（Windows DWM，关闭则恢复不透明窗体）"; chkBlur->Checked = g_ui.blur;
+    Label^ lFont = MakeLabel(L"字体", 14, 124, 50, 24, false);
+    cboFont = gcnew ComboBox(); cboFont->Location = Drawing::Point(70, 122); cboFont->Size = Drawing::Size(220, 24); cboFont->Font = UI::FONT;
+    cboFont->DropDownStyle = ComboBoxStyle::DropDownList;
+    cboFont->Items->AddRange(gcnew array<Object^>{ L"Microsoft YaHei", L"SimSun", L"DengXian", L"SimHei", L"Consolas", L"Segoe UI" });
+    cboFont->Text = g_ui.fontFamily;
+    Label^ lSize = MakeLabel(L"字号", 320, 124, 50, 24, false);
+    cboFontSize = gcnew ComboBox(); cboFontSize->Location = Drawing::Point(372, 122); cboFontSize->Size = Drawing::Size(90, 24); cboFontSize->Font = UI::FONT;
+    cboFontSize->DropDownStyle = ComboBoxStyle::DropDownList;
+    cboFontSize->Items->AddRange(gcnew array<Object^>{ L"8", L"9", L"9.5", L"10", L"11", L"12", L"14" });
+    cboFontSize->Text = String::Format(L"{0}", g_ui.fontSize);
+    btnResetUI = gcnew Button(); btnResetUI->Location = Drawing::Point(14, 160); btnResetUI->Size = Drawing::Size(140, 28); btnResetUI->Text = L"恢复默认";
+    gbUI->Controls->AddRange(gcnew array<Control^>{ chkRound, chkAnim, chkBlur, lFont, cboFont, lSize, cboFontSize, btnResetUI });
+    pnlSettings->Controls->Add(gbUI);
+    StyleBtn(btnResetUI, false);
+    chkRound->CheckedChanged += gcnew EventHandler(this, &MainForm::chkRound_CheckedChanged);
+    chkAnim->CheckedChanged += gcnew EventHandler(this, &MainForm::chkAnim_CheckedChanged);
+    chkBlur->CheckedChanged += gcnew EventHandler(this, &MainForm::chkBlur_CheckedChanged);
+    cboFont->SelectedIndexChanged += gcnew EventHandler(this, &MainForm::cboFont_SelectedIndexChanged);
+    cboFontSize->SelectedIndexChanged += gcnew EventHandler(this, &MainForm::cboFontSize_SelectedIndexChanged);
+    btnResetUI->Click += gcnew EventHandler(this, &MainForm::btnResetUI_Click);
+    pnlSettings->AutoScroll = true;   // 内容超高时可滚动，避免界面设置被裁切
 }
 
 /* ===================== 辅助 ===================== */
@@ -1176,7 +1311,14 @@ void MainForm::SaveConfig()
         String^ p = ConfigPath();
         String^ dir = System::IO::Path::GetDirectoryName(p);
         if (!System::IO::Directory::Exists(dir)) System::IO::Directory::CreateDirectory(dir);
-        array<String^>^ lines = { String::Format(L"updateBeta={0}", chkUpdateBeta->Checked ? 1 : 0) };
+        array<String^>^ lines = {
+            String::Format(L"updateBeta={0}", chkUpdateBeta->Checked ? 1 : 0),
+            String::Format(L"uiRound={0}", g_ui.round ? 1 : 0),
+            String::Format(L"uiAnim={0}", g_ui.anim ? 1 : 0),
+            String::Format(L"uiBlur={0}", g_ui.blur ? 1 : 0),
+            L"uiFont=" + (g_ui.fontFamily ? g_ui.fontFamily : L"Microsoft YaHei"),
+            String::Format(L"uiSize={0}", g_ui.fontSize)
+        };
         System::IO::File::WriteAllLines(p, lines);
     }
     catch (...) { /* 配置写入失败忽略 */ }
@@ -1185,6 +1327,47 @@ void MainForm::SaveConfig()
 void MainForm::chkUpdateBeta_CheckedChanged(Object^, EventArgs^)
 {
     SaveConfig();   // 开关变化即持久化
+}
+
+void MainForm::chkRound_CheckedChanged(Object^, EventArgs^)
+{
+    g_ui.round = chkRound->Checked; SaveConfig(); ApplyUISettings();
+}
+void MainForm::chkAnim_CheckedChanged(Object^, EventArgs^)
+{
+    g_ui.anim = chkAnim->Checked; SaveConfig();
+}
+void MainForm::chkBlur_CheckedChanged(Object^, EventArgs^)
+{
+    g_ui.blur = chkBlur->Checked; SaveConfig(); ApplyBlur(g_ui.blur);
+}
+void MainForm::cboFont_SelectedIndexChanged(Object^, EventArgs^)
+{
+    if (cboFont->SelectedItem) {
+        g_ui.fontFamily = cboFont->SelectedItem->ToString();
+        UI::InitFonts(g_ui.fontFamily, g_ui.fontSize);
+        ApplyFontToAll(this);
+        SaveConfig();
+    }
+}
+void MainForm::cboFontSize_SelectedIndexChanged(Object^, EventArgs^)
+{
+    float v;
+    if (cboFontSize->SelectedItem && System::Single::TryParse(cboFontSize->SelectedItem->ToString(), v)) {
+        g_ui.fontSize = v; UI::InitFonts(g_ui.fontFamily, g_ui.fontSize);
+        ApplyFontToAll(this);
+        SaveConfig();
+    }
+}
+void MainForm::btnResetUI_Click(Object^, EventArgs^)
+{
+    g_ui.round = true; g_ui.anim = true; g_ui.blur = false;
+    g_ui.fontFamily = L"Microsoft YaHei"; g_ui.fontSize = 9.5f;
+    chkRound->Checked = true; chkAnim->Checked = true; chkBlur->Checked = false;
+    cboFont->Text = L"Microsoft YaHei"; cboFontSize->Text = L"9.5";
+    UI::InitFonts(g_ui.fontFamily, g_ui.fontSize);
+    ApplyUISettings();
+    SaveConfig();
 }
 
 /* ===================== 检查更新 ===================== */
