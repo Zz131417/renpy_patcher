@@ -9,6 +9,7 @@
 - 文档细分：把 `README.md` 中偏开发向的内容（技术栈 / 项目目录 / 架构 / 构建 / 调试 / CI / 测试 / 许可证）拆分到 [doc/DEVELOP.md](doc/DEVELOP.md)，新增常见问题 [doc/FAQ.md](doc/FAQ.md)；`README.md` 精简为用户向用法总览，顶部加「开发者文档」入口链接。
 
 ### 新增 / 变更
+- **重打包 APK（导出成 APK）**：新增 `apk/apk_tool`，CLI `patcher export-apk <apk> -m <mod_dir> -o out.apk [--keep-sig]`，GUI「游戏管理 → 导出 APK」分组框。基于已有 Ren'Py 安卓包：解开 → 注入 mod（按 APK 根路径）→ 4 字节对齐（zipalign 4）重打包为**未签名 APK**；默认移除旧 `META-INF` 签名，需你用 `apksigner` 自签。底层 `util/zip` 新增条目数据对齐（`zip_set_alignment`，用 local header 的 extra 字段承载）与精确输出路径（支持非 `.zip` 后缀）。
 - **聊天 / 选择分支解析与导图生成**：新增 `analyze/branch`，解析游戏脚本（.rpy）中的 `label` 与 `menu` 选择分支，构建分支图并导出 **四种格式**：
   - `tree`：文本树（从 `start` 深度优先展开菜单选项与跳转链，最直观）
   - `mermaid`：Mermaid `flowchart`，可直接贴进支持 Mermaid 的 Markdown / 在线渲染

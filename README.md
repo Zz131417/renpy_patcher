@@ -20,6 +20,7 @@
 - **内置更新检查**：GUI 设置页可一键检查更新（按构建号比较），并可选接收测试版通道。
 - **整包导入**：直接吃整个游戏的 `.zip` 压缩包，自动解压并定位内部 `.rpa`（CLI `import` / GUI 游戏登记）。
 - **导出为 exe**：把目录（游戏 / mod）打成自解压安装包，或注入启动命令生成「启动器 exe」（仅 Windows 可生成；纯解压 / 启动器两种模式）。
+- **重打包 APK**：基于已有 Ren'Py 安卓包，解开 → 注入 mod → 4 字节对齐重打包为未签名 APK，便于用 `apksigner` 自签后安装（CLI + GUI）。
 
 ## 开发者文档
 
@@ -132,6 +133,28 @@ patcher export-exe game_dir -o launcher.exe --launcher "game.exe"
 - **仅 Windows 可生成 exe**（需要 `sfx_stub.exe`，由 CI 在 Windows 上编译并随 GUI / CLI 附带）。其他平台执行会提示「仅 Windows 支持」。
 - 自解压桩与解压逻辑均复用项目自研 `util/zip_extract`，零第三方依赖。
 
+### 重打包 APK（注入 mod）
+
+> 面向**已有 Ren'Py 安卓包**：解开 APK → 把 mod 目录按 APK 根路径合并（如 `assets/` 下的游戏资源）→
+> **4 字节对齐**重打包成**未签名 APK**。Android 要求签名才能安装，因此最后请你用 Android SDK 自签：
+
+```bash
+# 基于已有 apk 重打包（注入 mod 目录），默认移除旧 META-INF 签名
+patcher export-apk game.apk -m my_mod -o out.apk
+
+# 如需保留原签名（不推荐，重打包后签名本就失效）加 --keep-sig
+patcher export-apk game.apk -m my_mod -o out.apk --keep-sig
+
+# 自签（需要 Android SDK 的 apksigner 与你自己的 keystore）
+apksigner sign --ks my.keystore out.apk
+```
+
+要点：
+- mod 目录路径**相对 APK 根**：想替换 `assets/game/script.rpy`，就在 mod 根放 `assets/game/script.rpy`；新文件自动追加。
+- 输出做了 **4 字节对齐**（对应 `zipalign 4`），满足 APK 安装要求。
+- 本项目零密码学依赖，**不内置签名**，`--keep-sig` 仅用于特殊场景；常规流程请自行 `apksigner` 签名。
+- 仅处理**资源层**，不生成 `classes.dex` / `lib/` / `AndroidManifest.xml` 等运行时文件——请基于完整可运行的 Ren'Py 安卓包操作。
+
 ## 翻译流水线（对话翻译）
 
 把游戏对话提取出来统一翻译，再生成 Ren'Py 翻译 mod（无需手工改每个脚本）。流程：
@@ -187,6 +210,7 @@ patcher branch <解包目录> -o branch.txt --format tree
 - 导出页新增「导出自解压 exe」「导出启动器 exe」（填启动命令），导出为单文件 exe 便于分发
 - 翻译流水线：提取对话 / AI 翻译 / 生成翻译 mod
 - 聊天分支导图：解析 label / menu 选择分支，导出 tree / mermaid / dot / json（CLI + GUI）
+- 导出 APK：基于已有 Ren'Py 安卓包重打包注入 mod，生成未签名 APK（需自行 apksigner 签名）
 - 检查更新：设置页可一键检查，按构建号与 GitHub 最新构建比较；「接收测试版更新」开关可切换是否提示测试版
 
 GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源码形式内置在 `third_party/zlib`，**无需 vcpkg / 系统 zlib / 联网**。
@@ -228,6 +252,7 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - 热注入（Windows，运行时进程注入）
 - 来源声明（自动 / 手动 / 仅导出文字）
 - 分卷 ZIP 导出（自研 `util/zip`，仅依赖 zlib）
+- 重打包 APK：基于已有安卓包注入 mod，4 字节对齐重打包（CLI + GUI，需自行签名）
 - 翻译流水线（提取对话/菜单/界面文本 → AI / 人工翻译 → 生成 Ren'Py 翻译 mod，统一 old/new 字符串翻译）
 - 聊天 / 选择分支解析与导图生成（tree / mermaid / dot / json 四种格式，CLI + GUI）
 - Mod 文档（[MOD.md](doc/MOD.md)）：文件级 mod / 翻译 mod / 热注入 mod 的目录结构、调用命令与生命周期

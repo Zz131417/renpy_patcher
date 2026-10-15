@@ -473,7 +473,27 @@ void MainForm::BuildGame()
     btnExportSfx->Click += gcnew EventHandler(this, &MainForm::btnExportSfx_Click);
     btnExportLauncher->Click += gcnew EventHandler(this, &MainForm::btnExportLauncher_Click);
 
-    y += 124;
+    // ============ 导出 APK ============
+    GroupBox^ gbApk = MakeGroup(L"导出 APK（重打包 Ren'Py 安卓包：解开→注入 mod→4字节对齐重打包，需自行 apksigner 签名）", 12, y, 736, 64);
+    txtApkIn = gcnew TextBox();     txtApkIn->Location = Drawing::Point(14, 26);  txtApkIn->Size = Drawing::Size(230, 23); txtApkIn->Font = UI::FONT;
+    btnBrowseApkIn = gcnew Button(); btnBrowseApkIn->Location = Drawing::Point(247, 24); btnBrowseApkIn->Size = Drawing::Size(56, 25); btnBrowseApkIn->Text = L"APK";
+    txtApkMod = gcnew TextBox();    txtApkMod->Location = Drawing::Point(308, 26); txtApkMod->Size = Drawing::Size(190, 23); txtApkMod->Font = UI::FONT;
+    btnBrowseApkMod = gcnew Button(); btnBrowseApkMod->Location = Drawing::Point(502, 24); btnBrowseApkMod->Size = Drawing::Size(56, 25); btnBrowseApkMod->Text = L"mod";
+    txtApkOut = gcnew TextBox();    txtApkOut->Location = Drawing::Point(563, 26); txtApkOut->Size = Drawing::Size(95, 23); txtApkOut->Font = UI::FONT;
+    btnBrowseApkOut = gcnew Button(); btnBrowseApkOut->Location = Drawing::Point(662, 24); btnBrowseApkOut->Size = Drawing::Size(56, 25); btnBrowseApkOut->Text = L"浏览";
+    btnApkGen = gcnew Button();     btnApkGen->Location = Drawing::Point(14, 56); btnApkGen->Size = Drawing::Size(180, 25); btnApkGen->Text = L"生成未签名APK";
+    gbApk->Controls->AddRange(gcnew array<Control^>{ txtApkIn, btnBrowseApkIn, txtApkMod, btnBrowseApkMod, txtApkOut, btnBrowseApkOut, btnApkGen });
+    pnlGame->Controls->Add(gbApk);
+    StyleBtn(btnBrowseApkIn, false); StyleBtn(btnBrowseApkMod, false); StyleBtn(btnBrowseApkOut, false);
+    StyleBtn(btnApkGen, true);
+    btnBrowseApkIn->Click += gcnew EventHandler(this, &MainForm::btnBrowseApkIn_Click);
+    btnBrowseApkMod->Click += gcnew EventHandler(this, &MainForm::btnBrowseApkMod_Click);
+    btnBrowseApkOut->Click += gcnew EventHandler(this, &MainForm::btnBrowseApkOut_Click);
+    btnApkGen->Click += gcnew EventHandler(this, &MainForm::btnApkGen_Click);
+
+    y += 80;
+
+
 
     // ============ 翻译流水线 ============
     GroupBox^ gbT = MakeGroup(L"翻译流水线 (提取对话 → AI翻译 → 生成翻译mod)", 12, y, 736, 112);
@@ -772,6 +792,23 @@ void MainForm::btnExportLauncher_Click(Object^, EventArgs^)
     RunOp(OpType::ExportLauncher, btnExportLauncher, L"导出启动器exe", txtExportDir->Text->Trim(), out, run, nullptr);
 }
 
+void MainForm::btnBrowseApkIn_Click(Object^, EventArgs^) { BrowseFile(txtApkIn, L"APK 文件 (*.apk)|*.apk|所有文件 (*.*)|*.*"); }
+void MainForm::btnBrowseApkMod_Click(Object^, EventArgs^) { BrowseFolder(txtApkMod); }
+void MainForm::btnBrowseApkOut_Click(Object^, EventArgs^)
+{
+    SaveFileDialog^ d = gcnew SaveFileDialog();
+    d->Filter = L"APK 文件 (*.apk)|*.apk|所有文件 (*.*)|*.*";
+    d->FileName = txtApkOut->Text;
+    if (d->ShowDialog() == System::Windows::Forms::DialogResult::OK) txtApkOut->Text = d->FileName;
+}
+void MainForm::btnApkGen_Click(Object^, EventArgs^)
+{
+    if (!CheckFile(txtApkIn, L"导出-APK")) return;
+    String^ out = txtApkOut->Text->Trim();
+    if (String::IsNullOrWhiteSpace(out)) out = L"out.apk";
+    RunOp(OpType::ExportApk, btnApkGen, L"导出APK", txtApkIn->Text->Trim(), txtApkMod->Text->Trim(), out, nullptr);
+}
+
 void MainForm::btnClearLog_Click(Object^, EventArgs^)
 {
     txtLog->Clear();
@@ -972,6 +1009,14 @@ void MainForm::bgTask_DoWork(Object^, DoWorkEventArgs^ e)
             if (arr) free_dialog_entries(arr, cnt);
             break;
         }
+        case OpType::ExportApk: {
+            std::string apk = a.empty() ? std::string() : a;
+            std::string mod = b.empty() ? std::string() : b;
+            std::string out = cc.empty() ? std::string() : cc;
+            rc = apk_repack(apk.c_str(), mod.c_str(), out.c_str(), 1);
+            if (rc == RP_OK) c->msg = L"[导出] APK 重打包完成 ✅（请自行 apksigner 签名）";
+            break;
+        }
         case OpType::Branch: {
             branch_graph_t g;
             rc = analyze_branches(a.c_str(), &g);
@@ -1022,6 +1067,9 @@ void MainForm::bgTask_RunWorkerCompleted(Object^, RunWorkerCompletedEventArgs^ e
 
     if (c->Type == OpType::TransAI && c->ok && !String::IsNullOrEmpty(c->outPath)) {
         txtTransCsv->Text = c->outPath;   // 便于下一步直接「生成翻译mod」
+    }
+    if (c->Type == OpType::ExportApk && c->ok && !String::IsNullOrEmpty(c->outPath)) {
+        txtApkOut->Text = c->outPath;
     }
     if (c->Type == OpType::Branch && c->ok && !String::IsNullOrEmpty(c->outPath)) {
         _branchOutPath = c->outPath;

@@ -34,6 +34,7 @@
 #include "inject/export/export_module.h"
 #include "translate/translate_cli.h"
 #include "analyze/branch.h"
+#include "apk/apk_tool.h"
 #include "util/log.h"
 #include "util/zip_extract.h"
 #include "util/sfx.h"
@@ -66,6 +67,7 @@ static void usage(const char *prog) {
     printf("  %s credit --text [--game <名>]                仅导出声明文字\n", prog);
     printf("  %s export <dir> -o <out.zip> [-split 100M] [-store|-deflate]   导出 zip（可分卷）\n", prog);
     printf("  %s branch <dir> -o out [--format mermaid|json|dot|tree]   解析聊天/选择分支，生成分支导图\n", prog);
+    printf("  %s export-apk <apk> -m <mod_dir> -o out.apk [--keep-sig]   基于已有 APK 重打包（注入 mod，生成未签名 APK）\n", prog);
     printf("全局选项: --log <file> | --no-log | --debug | --log-level <0-3>\n");
 }
 
@@ -339,6 +341,24 @@ int cmd_branch(int argc, char **argv) {
     return 0;
 }
 
+int cmd_apk(int argc, char **argv) {
+    const char *apk = NULL, *mod = NULL, *out = NULL;
+    int keep_sig = 0;
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-m") && i + 1 < argc) mod = argv[++i];
+        else if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
+        else if (!strcmp(argv[i], "--keep-sig")) keep_sig = 1;
+        else if (!apk) apk = argv[i];
+    }
+    if (!apk || !out) {
+        fprintf(stderr, "usage: patcher export-apk <apk> -m <mod_dir> -o out.apk [--keep-sig]\n");
+        return 1;
+    }
+    int rc = apk_repack(apk, mod, out, keep_sig ? 0 : 1);
+    if (rc != RP_OK) { log_error("APK 重打包失败（错误码 %d）", rc); return 1; }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *prog = argv[0];
 
@@ -379,6 +399,7 @@ int main(int argc, char **argv) {
     if (!strcmp(cmd, "export-exe")) return cmd_export_exe(sub_argc, sub_argv);
     if (!strcmp(cmd, "translate")) return cmd_translate(sub_argc, sub_argv);
     if (!strcmp(cmd, "branch"))      return cmd_branch(sub_argc, sub_argv);
+    if (!strcmp(cmd, "export-apk"))   return cmd_apk(sub_argc, sub_argv);
 
     usage(prog);
     return 1;

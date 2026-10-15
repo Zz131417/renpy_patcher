@@ -2,6 +2,7 @@
 #define RP_ZIP_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +30,10 @@ int zip_add_dir(zip_writer_t *z, const char *dir_path,
 
 /* 关闭并写出（分卷时生成 .z01 ... .zip）。返回 RP_OK。 */
 int zip_close(zip_writer_t *z);
+
+/* 设置条目数据对齐字节数（APK 需要 4 字节对齐，对应 zipalign 4）。
+ * align<=1 表示不填充；其余按 (align - len%align) 在每条数据前补零。 */
+int zip_set_alignment(zip_writer_t *z, uint16_t align);
 
 #ifdef __cplusplus
 }

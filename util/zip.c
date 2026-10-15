@@ -38,7 +38,9 @@ static int dyn_append(dyn_t *d, const void *buf, size_t n) {
 /* ---------- ZIP 结构 ---------- */
 struct zip_writer {
     char   base[1024];      /* 去掉 .zip 后缀后的基名 */
+    char   out_path[1100];  /* 单文件时的精确输出路径 */
     size_t split_size;      /* 0=单文件 */
+    uint16_t align;         /* 条目数据对齐（0/1=不填充，APK 用 4） */
     dyn_t  body;            /* 所有 local header + 数据 */
     dyn_t  cd;              /* 中央目录 */
     uint16_t n_entries;
@@ -114,7 +116,9 @@ zip_writer_t *zip_open(const char *out_path, size_t split_size) {
     } else {
         snprintf(z->base, sizeof(z->base), "%s", out_path);
     }
+    snprintf(z->out_path, sizeof(z->out_path), "%s", out_path);
     z->split_size = split_size;
+    z->align = 0;
     return z;
 }
 
@@ -134,6 +138,17 @@ static int zip_add_internal(zip_writer_t *z, const char *arc_name,
     uint16_t method = compress ? 8 : 0;
 
     size_t lho = z->body.len;   /* 本文件 local header 在 body 中的偏移 */
+    uint16_t nl = (uint16_t)strlen(arc_name);
+
+    /* 对齐：通过对齐 extra 字段（local header 末尾的 extra 区）让【数据起始偏移】
+     * 落在 align 字节边界（APK 要求 4 字节对齐 / zipalign）。
+     * 填充字节写在 extra 区，不进入压缩流，读取方按 extra-length 跳过即可。 */
+    uint16_t pad = 0;
+    if (z->align > 1) {
+        uint16_t a = z->align;
+        size_t off = lho + 30 + nl;        /* 数据本应起始处（无 extra 时） */
+        pad = (uint16_t)((a - (off % a)) % a);
+    }
 
     /* local file header (30 字节 + name) */
     unsigned char lh[30];
@@ -147,11 +162,20 @@ static int zip_add_internal(zip_writer_t *z, const char *arc_name,
     memcpy(lh + 14, &crc, 4);
     memcpy(lh + 18, &clen, 4);
     memcpy(lh + 22, &len, 4);
-    uint16_t nl = (uint16_t)strlen(arc_name);
     memcpy(lh + 26, &nl, 2);
-    lh[28] = 0; lh[29] = 0;                        /* extra len */
+    lh[28] = (unsigned char)(pad & 0xff);          /* extra length = 对齐填充 */
+    lh[29] = (unsigned char)(pad >> 8);
     dyn_append(&z->body, lh, 30);
     dyn_append(&z->body, arc_name, nl);
+    if (pad) {                                    /* extra 区填充（对齐） */
+        static const unsigned char zeros[16] = {0};
+        size_t off = 0;
+        while (off < pad) {
+            size_t chunk = pad - off; if (chunk > 16) chunk = 16;
+            dyn_append(&z->body, zeros, chunk);
+            off += chunk;
+        }
+    }
     dyn_append(&z->body, cdata, clen);
 
     /* central directory header (46 字节 + name) */
@@ -168,7 +192,7 @@ static int zip_add_internal(zip_writer_t *z, const char *arc_name,
     memcpy(ch + 20, &clen, 4);
     memcpy(ch + 24, &len, 4);
     memcpy(ch + 28, &nl, 2);
-    ch[30] = 0; ch[31] = 0;                         /* extra len */
+    ch[30] = 0; ch[31] = 0;                         /* extra len（中央目录不写对齐填充，仅 local header 承载） */
     ch[32] = 0; ch[33] = 0;                         /* comment len */
     ch[34] = 0; ch[35] = 0;                         /* disk number start */
     ch[36] = 0; ch[37] = 0;                         /* internal attr */
@@ -223,6 +247,12 @@ int zip_add_dir(zip_writer_t *z, const char *dir_path,
     return RP_OK;
 }
 
+int zip_set_alignment(zip_writer_t *z, uint16_t align) {
+    if (!z) return RP_ERR_GENERIC;
+    z->align = (align < 2) ? 0 : align;   /* 0/1 表示不填充 */
+    return RP_OK;
+}
+
 int zip_close(zip_writer_t *z) {
     if (!z) return RP_ERR_GENERIC;
 
@@ -251,7 +281,7 @@ int zip_close(zip_writer_t *z) {
     size_t total = z->body.len;
     if (z->split_size == 0 || total == 0) {
         char path[1100];
-        snprintf(path, sizeof(path), "%s.zip", z->base);
+        snprintf(path, sizeof(path), "%s", z->out_path);   /* 精确输出路径（可非 .zip，如 .apk） */
         FILE *f = fopen(path, "wb");
         if (!f) { rc = RP_ERR_IO; goto done; }
         fwrite(z->body.p, 1, total, f);

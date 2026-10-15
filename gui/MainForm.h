@@ -23,6 +23,7 @@
 #include "util/sfx.h"
 #include "util/resolve_source.h"
 #include "analyze/branch.h"
+#include "apk/apk_tool.h"
 
 namespace RenPyPatcherGUI {
 
@@ -40,7 +41,7 @@ static const int PAGE_SETTINGS = 2;   // 设置
 
 /* 后台任务类型（用于检查更新之外的文件操作，避免界面卡死） */
 public enum class OpType {
-    Unpack, Build, Credit, Export, TransExtract, TransAI, TransBuild, ExportSfx, ExportLauncher, Branch
+    Unpack, Build, Credit, Export, TransExtract, TransAI, TransBuild, ExportSfx, ExportLauncher, Branch, ExportApk
 };
 
 /// <summary>检查更新结果（后台线程 -> UI 线程传递用）</summary>
@@ -120,6 +121,14 @@ private:
     TextBox^  txtExeRun;
     Button^   btnExportSfx;
     Button^   btnExportLauncher;
+    // ---- 游戏管理页：导出 APK ----
+    TextBox^  txtApkIn;
+    Button^   btnBrowseApkIn;
+    TextBox^  txtApkMod;
+    Button^   btnBrowseApkMod;
+    TextBox^  txtApkOut;
+    Button^   btnBrowseApkOut;
+    Button^   btnApkGen;
 
     // ---- 游戏管理页：聊天分支导图 ----
     TextBox^  txtBranchDir;
@@ -214,6 +223,10 @@ private:
     void btnBrowseCreditOut_Click(Object^, EventArgs^);
     void btnBrowseExportDir_Click(Object^, EventArgs^);
     void btnBrowseExportOut_Click(Object^, EventArgs^);
+    void btnBrowseApkIn_Click(Object^, EventArgs^);
+    void btnBrowseApkMod_Click(Object^, EventArgs^);
+    void btnBrowseApkOut_Click(Object^, EventArgs^);
+    void btnApkGen_Click(Object^, EventArgs^);
     void btnBrowseTransDir_Click(Object^, EventArgs^);
     void btnBrowseTransCsv_Click(Object^, EventArgs^);
     void btnTransExtract_Click(Object^, EventArgs^);
