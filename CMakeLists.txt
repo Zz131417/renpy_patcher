@@ -117,17 +117,18 @@ endif()
 # 仅 Windows：复用同一套核心 C 实现（renpy_core 静态库），
 # GUI 用 C++/CLI（/clr）调用，功能与 CLI 完全对齐。
 if(WIN32)
-    # 注意：不要加 WIN32。WIN32 会让链接器要求 native WinMain，
-    # 但 C++/CLI 程序的入口是托管 main()（见 gui/Program.cpp），
-    # 故保持默认 CONSOLE 子系统以 main 为入口，链接即可通过。
+    # 注意：不要加 WIN32_EXECUTABLE（会让链接器要求 native WinMain）。
+    # 入口是托管 Main()（见 gui/Program.cpp，已用 pragma 设 /SUBSYSTEM:WINDOWS 去掉黑框）；
+    # /utf-8 确保 L"" 中文按 UTF-8 解读，避免运行时中文乱码。
     add_executable(patcher_gui
         gui/Program.cpp
         gui/MainForm.cpp
         gui/MainForm.h
     )
     # 显式开启 C++/CLI（/clr）——比 VS_CLR_SUPPORT 属性更可靠，确保 /clr 被注入编译命令。
-    # /EHa：/clr 要求的异常处理模型；/permissive：关闭一致性模式（/clr 需要）。
-    target_compile_options(patcher_gui PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/clr /EHa /permissive>)
+    # /EHa：/clr 要求的异常处理模型；/permissive：关闭一致性模式（/clr 需要）；
+    # /utf-8：源文件为 UTF-8 无 BOM，强制按 UTF-8 解读 L"" 宽字符串字面量，避免中文乱码。
+    target_compile_options(patcher_gui PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/clr /EHa /permissive /utf-8>)
     # 绑定 .NET Framework 4.8 并引用 WinForms 等程序集
     set_target_properties(patcher_gui PROPERTIES
         VS_DOTNET_TARGET_FRAMEWORK_VERSION "v4.8"

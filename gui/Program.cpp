@@ -5,6 +5,9 @@
 using namespace System;
 using namespace System::Windows::Forms;
 
+// 使用窗口子系统，避免启动时的控制台黑框（影响美观）
+#pragma comment(linker, "/SUBSYSTEM:WINDOWS")
+
 [STAThread]
 int main(array<String^>^ args)
 {
