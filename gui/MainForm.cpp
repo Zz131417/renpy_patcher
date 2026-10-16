@@ -239,11 +239,11 @@ MainForm::MainForm()
     statusVer->Font = UI::FONT;
     statusBar->Items->AddRange(gcnew array<ToolStripItem^>{ statusLabel, statusVer });
 
-    this->Controls->Add(navBar);
+    this->Controls->Add(statusBar);   // 最底状态栏
+    this->Controls->Add(navBar);     // 底部导航栏（Dock=Bottom，位于状态栏之上）
     this->Controls->Add(pnlHome);
     this->Controls->Add(pnlGame);
     this->Controls->Add(pnlSettings);
-    this->Controls->Add(statusBar);
 
     ShowPage(PAGE_GAME);   // 默认进入「游戏管理」
 
@@ -271,58 +271,54 @@ MainForm::MainForm()
 /* ===================== 导航栏 ===================== */
 void MainForm::BuildNav()
 {
-    const int BTN_W = 120, BTN_H = 38, GAP = 6, PADX = 14, PADY = 13, R = 12;
-    int cardW = PADX * 2 + BTN_W * 3 + GAP * 2;   // 400
-    int cardH = PADY * 2 + BTN_H;                 // 64
-    int navH  = cardH + 4;                        // 含阴影下移
-
-    // 透明容器，水平居中浮在【底部】
+    // 实底 Dock 底部标签栏：始终可见，不透明、不用 Region/阴影（避免被白色页面“吃掉”不可见）
     navBar = gcnew Panel();
-    navBar->BackColor = Drawing::Color::Transparent;
-    navBar->Location = Drawing::Point((this->ClientSize.Width - cardW) / 2, this->ClientSize.Height - navH - 8);
-    navBar->Size = Drawing::Size(cardW, navH);
+    navBar->Dock = DockStyle::Bottom;
+    navBar->Height = 54;
+    navBar->BackColor = Drawing::Color::FromArgb(248, 250, 252);   // 近白，与纯白页面区分
 
-    // 阴影层（灰半透明圆角，下移 4px 制造悬浮感）
-    Panel^ shadow = gcnew Panel();
-    shadow->Location = Drawing::Point(0, 4);
-    shadow->Size = Drawing::Size(cardW, cardH);
-    shadow->BackColor = Drawing::Color::FromArgb(45, 15, 23, 42);
-    shadow->Region = g_ui.round ? MakeRoundRegion(cardW, cardH, R) : nullptr;
+    // 顶部分隔线（清晰界定导航栏与页面）
+    Panel^ sep = gcnew Panel();
+    sep->Dock = DockStyle::Top;
+    sep->Height = 1;
+    sep->BackColor = Drawing::Color::FromArgb(226, 232, 240);
+    navBar->Controls->Add(sep);
 
-    // 卡片层（白底圆角）
-    Panel^ card = gcnew Panel();
-    card->Location = Drawing::Point(0, 0);
-    card->Size = Drawing::Size(cardW, cardH);
-    card->BackColor = Drawing::Color::White;
-    card->Region = g_ui.round ? MakeRoundRegion(cardW, cardH, R) : nullptr;
+    // 三列等宽表格，按钮填充单元格 → 底部标签栏
+    TableLayoutPanel^ tlp = gcnew TableLayoutPanel();
+    tlp->Dock = DockStyle::Fill;
+    tlp->ColumnCount = 3;
+    tlp->RowCount = 1;
+    tlp->ColumnStyles->Add(gcnew ColumnStyle(SizeType::Percent, 100.0f / 3));
+    tlp->ColumnStyles->Add(gcnew ColumnStyle(SizeType::Percent, 100.0f / 3));
+    tlp->ColumnStyles->Add(gcnew ColumnStyle(SizeType::Percent, 100.0f / 3));
+    tlp->RowStyles->Add(gcnew RowStyle(SizeType::Percent, 100.0f));
+    tlp->BackColor = Drawing::Color::Transparent;
 
-    // 三个水平排列的导航按钮
-    btnNavGame     = gcnew Button();
-    btnNavHome     = gcnew Button();    // 主页
-    btnNavSettings = gcnew Button();
-    array<Button^>^ btns = gcnew array<Button^>{ btnNavGame, btnNavHome, btnNavSettings };
     array<String^>^ names = gcnew array<String^>{ L"游戏管理", L"主页", L"设置" };
     for (int i = 0; i < 3; i++) {
-        btns[i]->Location = Drawing::Point(PADX + i * (BTN_W + GAP), PADY);
-        btns[i]->Size = Drawing::Size(BTN_W, BTN_H);
-        btns[i]->Text = names[i];
-        btns[i]->FlatStyle = FlatStyle::Flat;
-        btns[i]->Font = UI::FONT_B;
-        btns[i]->UseVisualStyleBackColor = false;
-        btns[i]->Cursor = Cursors::Hand;
-        btns[i]->ForeColor = UI::TEXT;
-        btns[i]->BackColor = Drawing::Color::Transparent;
-        btns[i]->FlatAppearance->BorderSize = 0;
-        btns[i]->FlatAppearance->MouseOverBackColor = Drawing::Color::FromArgb(243, 244, 246);
-        btns[i]->FlatAppearance->MouseDownBackColor = Drawing::Color::FromArgb(229, 231, 235);
+        Button^ b = gcnew Button();
+        b->Text = names[i];
+        b->Dock = DockStyle::Fill;
+        b->Margin = System::Windows::Forms::Padding(6, 4, 6, 4);
+        b->FlatStyle = FlatStyle::Flat;
+        b->Font = UI::FONT_B;
+        b->UseVisualStyleBackColor = false;
+        b->Cursor = Cursors::Hand;
+        b->ForeColor = UI::TEXT;
+        b->BackColor = Drawing::Color::Transparent;
+        b->FlatAppearance->BorderSize = 0;
+        b->FlatAppearance->MouseOverBackColor = Drawing::Color::FromArgb(241, 245, 249);
+        b->FlatAppearance->MouseDownBackColor = Drawing::Color::FromArgb(226, 232, 240);
+        if (i == 0)      btnNavGame = b;
+        else if (i == 1) btnNavHome = b;
+        else             btnNavSettings = b;
+        tlp->Controls->Add(b, i, 0);
     }
     btnNavGame->Click    += gcnew EventHandler(this, &MainForm::btnNavGame_Click);
     btnNavHome->Click    += gcnew EventHandler(this, &MainForm::btnNavHome_Click);
     btnNavSettings->Click += gcnew EventHandler(this, &MainForm::btnNavSettings_Click);
-
-    card->Controls->AddRange(gcnew array<Control^>{ btnNavGame, btnNavHome, btnNavSettings });
-    navBar->Controls->AddRange(gcnew array<Control^>{ shadow, card });
-    navBar->BringToFront();
+    navBar->Controls->Add(tlp);
 }
 
 void MainForm::ShowPage(int idx)
@@ -344,7 +340,7 @@ void MainForm::ShowPage(int idx)
     }
 
     Drawing::Color sel = UI::ACCENT;                 // 选中：蓝底白字
-    Drawing::Color nor = Drawing::Color::Transparent;    // 未选：透明（显白卡底）
+    Drawing::Color nor = Drawing::Color::Transparent;    // 未选：透明
     Drawing::Color selF = Drawing::Color::White;
     Drawing::Color norF = UI::TEXT;
 
@@ -363,15 +359,11 @@ void MainForm::btnNavSettings_Click(Object^, EventArgs^) { ShowPage(PAGE_SETTING
 /* 窗口缩放：顶部导航条水平居中 + 三页面铺满客户区 */
 void MainForm::OnResizeForm(Object^, EventArgs^)
 {
-    // 底部导航栏：水平居中，浮在客户区底部
-    if (navBar && navBar->Width > 0)
-        navBar->Location = Drawing::Point((this->ClientSize.Width - navBar->Width) / 2, this->ClientSize.Height - navBar->Height - 8);
-    // 页面铺满：顶部留 8，底部留出导航栏高度 + 间距
-    int top = 8, pw = this->ClientSize.Width - 16, ph = this->ClientSize.Height - navBar->Height - 24;
+    // 导航栏与状态栏均为 Dock=Bottom，ClientSize 已排除它们，页面直接铺满剩余区域
+    int top = 8, pw = this->ClientSize.Width - 16, ph = this->ClientSize.Height - 16;
     pnlGame->Location = Drawing::Point(8, top);      pnlGame->Size = Drawing::Size(pw, ph);
     pnlHome->Location = Drawing::Point(8, top);      pnlHome->Size = Drawing::Size(pw, ph);
     pnlSettings->Location = Drawing::Point(8, top);  pnlSettings->Size = Drawing::Size(pw, ph);
-    if (navBar) navBar->BringToFront();   // 页面面板后于导航添加会盖住它，始终置顶
 }
 
 /* ===================== UI 设置 ===================== */

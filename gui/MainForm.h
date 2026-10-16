@@ -89,7 +89,7 @@ public:
 
 private:
     // ---- 导航栏 ----
-    Panel^   navBar;   // 顶部居中悬浮导航条（容器）
+    Panel^   navBar;   // 底部 Dock 导航栏（实底标签栏，始终可见）
     Button^  btnNavGame;
     Button^  btnNavHome;
     Button^  btnNavSettings;
