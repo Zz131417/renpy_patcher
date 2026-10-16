@@ -5,13 +5,15 @@
 using namespace System;
 using namespace System::Windows::Forms;
 
-// 使用窗口子系统，避免启动时的控制台黑框（影响美观）
-#pragma comment(linker, "/SUBSYSTEM:WINDOWS")
-
 [STAThread]
 int main(array<String^>^ args)
 {
     (void)args;
+    // 释放启动时自动分配的控制台窗口：GUI 不需要命令行，去掉黑框（先隐藏再释放，避免闪现）
+    HWND hCon = GetConsoleWindow();
+    if (hCon) ShowWindow(hCon, SW_HIDE);
+    FreeConsole();
+
     Application::EnableVisualStyles();
     Application::SetCompatibleTextRenderingDefault(false);
     Application::Run(gcnew RenPyPatcherGUI::MainForm());

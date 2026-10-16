@@ -118,8 +118,8 @@ endif()
 # GUI 用 C++/CLI（/clr）调用，功能与 CLI 完全对齐。
 if(WIN32)
     # 注意：不要加 WIN32_EXECUTABLE（会让链接器要求 native WinMain）。
-    # 入口是托管 Main()（见 gui/Program.cpp，已用 pragma 设 /SUBSYSTEM:WINDOWS 去掉黑框）；
-    # /utf-8 确保 L"" 中文按 UTF-8 解读，避免运行时中文乱码。
+    # 入口是托管 int main()（见 gui/Program.cpp），默认 CONSOLE 子系统可正常链接；
+    # 黑框由 Program.cpp 在启动时 FreeConsole() 释放；/utf-8 确保 L"" 中文按 UTF-8 解读不乱码。
     add_executable(patcher_gui
         gui/Program.cpp
         gui/MainForm.cpp

@@ -12,7 +12,7 @@
 - **重打包 APK（导出成 APK）**：新增 `apk/apk_tool`，CLI `patcher export-apk <apk> -m <mod_dir> -o out.apk [--keep-sig]`，GUI「游戏管理 → 导出 APK」分组框。基于已有 Ren'Py 安卓包：解开 → 注入 mod（按 APK 根路径）→ 4 字节对齐（zipalign 4）重打包为**未签名 APK**；默认移除旧 `META-INF` 签名，需你用 `apksigner` 自签。底层 `util/zip` 新增条目数据对齐（`zip_set_alignment`，用 local header 的 extra 字段承载）与精确输出路径（支持非 `.zip` 后缀）。
 - **GUI 美化**：导航栏由左侧深色竖栏改为**顶部居中悬浮胶囊**（圆角白卡 + 阴影，浮于页面上方），三页改为铺满窗口宽度；窗口缩放时导航条自动水平居中、页面尺寸自适应（引入圆角 Region 与 Resize 处理）。
 - **设置页新增「界面设置」**：圆角开关、动画开关、背景模糊（Windows DWM 模糊）、字体族、字号，全部实时生效并自动持久化到本地 `gui.cfg`；含「恢复默认」按钮。
-- **GUI 修复**：① 中文乱码（源文件 UTF-8 无 BOM 被 MSVC 按 GBK 解读，给 `patcher_gui` 加 `/utf-8` 编译选项）；② 启动时的控制台黑框（入口改窗口子系统 `/SUBSYSTEM:WINDOWS`，不再弹出命令行窗口）。
+- **GUI 修复**：① 中文乱码（源文件 UTF-8 无 BOM 被 MSVC 按 GBK 解读，给 `patcher_gui` 加 `/utf-8` 编译选项）；② 启动时的控制台黑框（入口在 `Program.cpp` 启动时调用 `FreeConsole()` 释放，不再弹出命令行窗口）。
 - **聊天 / 选择分支解析与导图生成**：新增 `analyze/branch`，解析游戏脚本（.rpy）中的 `label` 与 `menu` 选择分支，构建分支图并导出 **四种格式**：
   - `tree`：文本树（从 `start` 深度优先展开菜单选项与跳转链，最直观）
   - `mermaid`：Mermaid `flowchart`，可直接贴进支持 Mermaid 的 Markdown / 在线渲染
