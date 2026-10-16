@@ -276,10 +276,10 @@ void MainForm::BuildNav()
     int cardH = PADY * 2 + BTN_H;                 // 64
     int navH  = cardH + 4;                        // 含阴影下移
 
-    // 透明容器，水平居中浮在顶部
+    // 透明容器，水平居中浮在【底部】
     navBar = gcnew Panel();
     navBar->BackColor = Drawing::Color::Transparent;
-    navBar->Location = Drawing::Point((this->ClientSize.Width - cardW) / 2, 10);
+    navBar->Location = Drawing::Point((this->ClientSize.Width - cardW) / 2, this->ClientSize.Height - navH - 8);
     navBar->Size = Drawing::Size(cardW, navH);
 
     // 阴影层（灰半透明圆角，下移 4px 制造悬浮感）
@@ -298,10 +298,10 @@ void MainForm::BuildNav()
 
     // 三个水平排列的导航按钮
     btnNavGame     = gcnew Button();
-    btnNavHome     = gcnew Button();
+    btnNavHome     = gcnew Button();    // 主页
     btnNavSettings = gcnew Button();
     array<Button^>^ btns = gcnew array<Button^>{ btnNavGame, btnNavHome, btnNavSettings };
-    array<String^>^ names = gcnew array<String^>{ L"游戏管理", L"首页", L"设置" };
+    array<String^>^ names = gcnew array<String^>{ L"游戏管理", L"主页", L"设置" };
     for (int i = 0; i < 3; i++) {
         btns[i]->Location = Drawing::Point(PADX + i * (BTN_W + GAP), PADY);
         btns[i]->Size = Drawing::Size(BTN_W, BTN_H);
@@ -334,7 +334,7 @@ void MainForm::ShowPage(int idx)
     // 动画：选中页从下方轻微滑入（关闭动画则直接定位）
     Panel^ cur = (idx == PAGE_GAME) ? pnlGame : (idx == PAGE_HOME) ? pnlHome : pnlSettings;
     if (g_ui.anim && cur) {
-        int top = 68;
+        int top = 8;
         cur->Top = top + 14;
         System::Windows::Forms::Timer^ tm = gcnew System::Windows::Forms::Timer();
         tm->Interval = 12;
@@ -363,9 +363,11 @@ void MainForm::btnNavSettings_Click(Object^, EventArgs^) { ShowPage(PAGE_SETTING
 /* 窗口缩放：顶部导航条水平居中 + 三页面铺满客户区 */
 void MainForm::OnResizeForm(Object^, EventArgs^)
 {
+    // 底部导航栏：水平居中，浮在客户区底部
     if (navBar && navBar->Width > 0)
-        navBar->Location = Drawing::Point((this->ClientSize.Width - navBar->Width) / 2, navBar->Location.Y);
-    int top = 68, pw = this->ClientSize.Width - 16, ph = this->ClientSize.Height - 92;
+        navBar->Location = Drawing::Point((this->ClientSize.Width - navBar->Width) / 2, this->ClientSize.Height - navBar->Height - 8);
+    // 页面铺满：顶部留 8，底部留出导航栏高度 + 间距
+    int top = 8, pw = this->ClientSize.Width - 16, ph = this->ClientSize.Height - navBar->Height - 24;
     pnlGame->Location = Drawing::Point(8, top);      pnlGame->Size = Drawing::Size(pw, ph);
     pnlHome->Location = Drawing::Point(8, top);      pnlHome->Size = Drawing::Size(pw, ph);
     pnlSettings->Location = Drawing::Point(8, top);  pnlSettings->Size = Drawing::Size(pw, ph);
@@ -427,7 +429,7 @@ void MainForm::AnimTick(Object^ sender, EventArgs^)
 {
     Timer^ t = safe_cast<Timer^>(sender);
     Panel^ p = safe_cast<Panel^>(t->Tag);
-    int top = 68;
+    int top = 8;
     if (p->Top > top) { p->Top -= 3; if (p->Top < top) p->Top = top; }
     else { p->Top = top; t->Stop(); }
 }
