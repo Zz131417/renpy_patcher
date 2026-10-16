@@ -210,7 +210,7 @@ MainForm::MainForm()
     this->MinimumSize = Drawing::Size(780, 520);
     this->StartPosition = FormStartPosition::CenterScreen;
     this->Font = UI::FONT;
-    this->BackColor = UI::PANEL;   // 浅灰底，衬托顶部悬浮白色导航卡片
+    this->BackColor = UI::PANEL;   // 浅灰底，衬托底部悬浮白色导航卡片
     this->DoubleBuffered = true;
 
     log_init("patcher.log");
@@ -371,6 +371,7 @@ void MainForm::OnResizeForm(Object^, EventArgs^)
     pnlGame->Location = Drawing::Point(8, top);      pnlGame->Size = Drawing::Size(pw, ph);
     pnlHome->Location = Drawing::Point(8, top);      pnlHome->Size = Drawing::Size(pw, ph);
     pnlSettings->Location = Drawing::Point(8, top);  pnlSettings->Size = Drawing::Size(pw, ph);
+    if (navBar) navBar->BringToFront();   // 页面面板后于导航添加会盖住它，始终置顶
 }
 
 /* ===================== UI 设置 ===================== */
