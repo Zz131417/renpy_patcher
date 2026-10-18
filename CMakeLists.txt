@@ -101,41 +101,30 @@ if(WIN32)
     target_link_libraries(sfx_stub PRIVATE renpy_core shell32 user32)
     target_include_directories(sfx_stub PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     set_target_properties(sfx_stub PROPERTIES WIN32_EXECUTABLE TRUE)
-    # 把桩复制到 patcher / patcher_gui 输出目录，便于运行时定位
+    # 把桩复制到 patcher / patcher_core 输出目录，便于运行时定位
     add_custom_command(TARGET sfx_stub POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:sfx_stub> $<TARGET_FILE_DIR:patcher>/sfx_stub.exe)
-    if(TARGET patcher_gui)
+    if(TARGET patcher_core)
         add_custom_command(TARGET sfx_stub POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:sfx_stub> $<TARGET_FILE_DIR:patcher_gui>/sfx_stub.exe)
+                $<TARGET_FILE:sfx_stub> $<TARGET_FILE_DIR:patcher_core>/sfx_stub.exe)
     endif()
 endif()
 # ============================================================================
 
-# ===================== Windows GUI（C++/CLI WinForms） =====================
-# 仅 Windows：复用同一套核心 C 实现（renpy_core 静态库），
-# GUI 用 C++/CLI（/clr）调用，功能与 CLI 完全对齐。
+# ===================== 核心 DLL（供 GUI / 外部前端 P/Invoke） =====================
+# 仅 Windows：把同一套核心 C 实现编成 patcher_core.dll，供 WPF（C#）通过 P/Invoke 调用。
+# 导出接口见 core_api/core_api.h（所有字符串为 UTF-8）。CLI 仍链 renpy_core 静态库，互不影响。
 if(WIN32)
-    # 注意：不要加 WIN32_EXECUTABLE（会让链接器要求 native WinMain）。
-    # 入口是托管 int main()（见 gui/Program.cpp），默认 CONSOLE 子系统可正常链接；
-    # 黑框由 Program.cpp 在启动时 FreeConsole() 释放；/utf-8 确保 L"" 中文按 UTF-8 解读不乱码。
-    add_executable(patcher_gui
-        gui/Program.cpp
-        gui/MainForm.cpp
-        gui/MainForm.h
-    )
-    # 显式开启 C++/CLI（/clr）——比 VS_CLR_SUPPORT 属性更可靠，确保 /clr 被注入编译命令。
-    # /EHa：/clr 要求的异常处理模型；/permissive：关闭一致性模式（/clr 需要）；
-    # /utf-8：源文件为 UTF-8 无 BOM，强制按 UTF-8 解读 L"" 宽字符串字面量，避免中文乱码。
-    target_compile_options(patcher_gui PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/clr /EHa /permissive /utf-8>)
-    # 绑定 .NET Framework 4.8 并引用 WinForms 等程序集
-    set_target_properties(patcher_gui PROPERTIES
-        VS_DOTNET_TARGET_FRAMEWORK_VERSION "v4.8"
-        VS_DOTNET_REFERENCES "System;System.Core;System.Drawing;System.Windows.Forms;System.Xml"
-    )
-    target_link_libraries(patcher_gui PRIVATE renpy_core)
-    target_include_directories(patcher_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_library(patcher_core SHARED core_api/core_api.c ${CORE_SRC})
+    target_include_directories(patcher_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(patcher_core PUBLIC zlibstatic)
+    target_compile_definitions(patcher_core PRIVATE RP_CORE_EXPORT)
+    # 复制 DLL 到 CLI 输出目录，便于本地联调（WPF 运行时也需随附此 DLL）
+    add_custom_command(TARGET patcher_core POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:patcher_core> $<TARGET_FILE_DIR:patcher>)
 endif()
 # ==========================================================================
 

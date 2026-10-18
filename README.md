@@ -16,7 +16,7 @@
 - **热注入（Windows）**：运行时向游戏进程注入 DLL，定位 CPython、激活游戏内 Python 加载 `mod_main.py`，零改文件。
 - **对话翻译流水线**：提取游戏对话 → AI / 人工翻译 → 一键生成 Ren'Py 翻译 mod，免去手工改每个脚本。
 - **可扩展架构**：统一模块注册表（`core/plugin_loader`），新能力（压缩导出 / 翻译后端 / 外部插件）即插即用。
-- **Windows GUI**：C++/CLI + .NET WinForms，复用同一核心库，功能与 CLI 对齐；操作前校验输入、失败在日志框显示「错误码 + 中文含义 + 底层详情」、全局 `try/catch` 防崩溃。
+- **Windows GUI**：C# / WPF（.NET 8），通过 `patcher_core.dll` 调用核心库，功能与 CLI 对齐；底部三页导航（游戏管理 / 主页 / 设置）、操作前校验输入、失败在日志区显示「错误码 + 中文含义 + 底层详情」、后台线程执行不卡界面。
 - **内置更新检查**：GUI 设置页可一键检查更新（按构建号比较），并可选接收测试版通道。
 - **整包导入**：直接吃整个游戏的 `.zip` 压缩包，自动解压并定位内部 `.rpa`（CLI `import` / GUI 游戏登记）。
 - **导出为 exe**：把目录（游戏 / mod）打成自解压安装包，或注入启动命令生成「启动器 exe」（仅 Windows 可生成；纯解压 / 启动器两种模式）。
@@ -200,9 +200,9 @@ patcher branch <解包目录> -o branch.txt --format tree
 - 三类统一用 Ren'Py 的 **old/new 字符串翻译**回填（`translate <lang> <block>:` 块），Ren'Py 自动匹配替换对话、菜单选项与界面显示文本。
 - Ren'Py 会优先加载 `tl/<lang>/` 下的译文覆盖原文，无需重排索引。
 
-## GUI 版（Windows / .NET WinForms）
+## GUI 版（Windows / .NET 8 WPF）
 
-除命令行外，本项目另提供 **GUI 版**（仅 Windows，C++/CLI + .NET WinForms），与 CLI **功能完全对齐**，共用同一套核心 C 实现（同一个 `renpy_core` 静态库）：
+除命令行外，本项目另提供 **GUI 版**（仅 Windows，C# + WPF / .NET 8），与 CLI **功能完全对齐**：核心 C 库被编成 `patcher_core.dll`，GUI 通过 P/Invoke 调用，**CLI 与 GUI 共用同一份核心代码**，逻辑完全一致。
 
 - 游戏管理：登记 / 删除 / 列出别名
 - 解包 / 注入（build，自动写来源声明）/ 来源声明（credit）/ 导出（export，可分卷）
@@ -224,16 +224,20 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - **不卡界面**：文件操作在后台线程执行，界面在长时间任务期间仍可用。
 
 ### 构建 GUI（Windows）
-1. 安装 Visual Studio 2019/2022（「使用 C++ 的桌面开发」+「C++/CLI 支持」+「.NET Framework 4.8 开发工具」）。
-2. 用 CMake 配置并构建（自动产出 `patcher_gui.exe`，同时构建 CLI 与内置 zlib）：
+1. 安装 [.NET 8 SDK](https://dotnet.microsoft.com/download) 与带「C++ 桌面开发」的 Visual Studio（编译核心 DLL / CLI 需要 MSVC + CMake + zlib）。
+2. 用 CMake 构建核心库与 CLI（产出 `patcher_core.dll`、`patcher.exe`，zlib 经 vcpkg 接入）：
    ```bash
-   cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-   cmake --build build --config Release
+   cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DVCPKG_TARGET_TRIPLET=x64-windows-static
+   cmake --build build --config Release --target patcher patcher_core
    ```
-   也可在 VS 中「打开 CMake 项目」。
-3. 输出：`build/Release/patcher_gui.exe`（同目录另有 `patcher.exe`）。
+3. 用 .NET 发布 WPF（自包含，免装运行时）：
+   ```bash
+   dotnet publish gui_wpf/gui_wpf.csproj -c Release -r win-x64 --self-contained true -o gui_publish
+   copy build\bin\Release\patcher_core.dll gui_publish\
+   ```
+4. 运行 `gui_publish\renpy_patcher_gui.exe`（需同目录有 `patcher_core.dll` 与 `patcher.exe`）。
 
-> 说明：GUI 复用同一核心库；热注入 `agent.dll` 仅在装有 Python 开发包时一并构建，GUI 本身不依赖 Python。
+> 说明：GUI 通过 P/Invoke 调 `patcher_core.dll`；热注入 `agent.dll` 仅在装有 Python 开发包时一并构建，GUI 本身不依赖 Python。
 
 ### 检查更新
 - GUI 在启动时自动静默检查一次，发现新版本才弹窗提示；也可在「设置」页手动点「检查更新」。

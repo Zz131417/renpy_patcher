@@ -1,352 +1,101 @@
-name: Build & Package
+name: Build & Release
 
-# 触发：
-#   - push 到 main：自动编译并发布 Release（自动 tag：v<主版本>-beta<字母>（从 A 依次递增，每发布一次正式版即重置），默认预发布）
-#   - workflow_dispatch（手动「Run workflow」）：也可手动一键发版（tag 可自定义，正式/预发布可选）
-#   - push v* 标签：仅做构建验证（tag 仅作「定期备份」用途，不触发发版）
-#   - 对 main 的 PR：仅构建验证
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
+    paths-ignore: [ '**.md', 'doc/**' ]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release 使用的 tag 名（留空则自动用 build-<时间>）。注意：此 tag 与「备份用 v* tag」相互独立'
-        required: false
-        default: ''
-      prerelease:
-        description: '是否标记为预发布'
-        type: boolean
-        required: false
-        default: true
 
 permissions:
-  contents: write   # 发布 Release 需要
+  contents: write
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            asset_cli: patcher-linux-x64
-          - os: windows-latest
-            asset_cli: patcher-windows-x64
-            asset_gui: patcher-gui-windows-x64
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: true
-          fetch-depth: 0
-
-      - name: 诊断（确认 checkout 到正确提交 / 无旧缓存残留）
-        shell: bash
-        run: |
-          echo "HEAD: $(git rev-parse HEAD)"
-          echo "短SHA: $(git rev-parse --short HEAD)"
-          grep -n "GetTempPathA" gui/MainForm.cpp && echo "!! 仍含 GetTempPathA（旧缓存）" || echo "OK: MainForm.cpp 已无 GetTempPathA"
-
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
-        uses: microsoft/setup-msbuild@v2
-
-      # zlib 源码已内置在 third_party/zlib，由 CMake add_subdirectory 构建，
-      # 无需 vcpkg / 系统 zlib / 网络连接。
-      - name: Configure
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
-
-      - name: Build
-        run: cmake --build build --config Release
-
-      - name: Package (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          cd build
-          zip -r ../${{ matrix.asset_cli }}.zip patcher
-          cd ..
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cd build/Release
-          # CLI 产物（agent.dll 仅在装有 Python 开发包时生成，故可选）
-          $cli = 'patcher.exe'
-          if (Test-Path agent.dll) { $cli += ';agent.dll' }
-          7z a ../../${{ matrix.asset_cli }}.zip $cli.Split(';')
-          # GUI 产物
-          7z a ../../${{ matrix.asset_gui }}.zip patcher_gui.exe
-          cd ../..
-
-      # ---- 生成 MSI 安装包（仅 Windows GUI） ----
-      - name: 准备安装目录（复制 exe + VC++ 运行库）
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $deploy = "installer_deploy"
-          New-Item -ItemType Directory -Force $deploy | Out-Null
-          Copy-Item build/Release/patcher_gui.exe $deploy/
-          if (Test-Path build/Release/agent.dll) { Copy-Item build/Release/agent.dll $deploy/ }
-          # 复制自解压桩（导出 exe 功能需要，随 GUI 安装包一起分发）
-          if (Test-Path build/Release/sfx_stub.exe) { Copy-Item build/Release/sfx_stub.exe $deploy/ }
-          # 复制 C++/CLI 运行所依赖的 VC++ 运行库，使目标机无需额外安装 VC++ 可再发行组件。
-          # 优先从 VS 2022 Redist 目录找，找不到则从 System32 拷对应的 DLL（CI 机器自带）。
-          $dlls = @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','msvcp140_1.dll','msvcp140_2.dll','concrt140.dll')
-          $vcroot = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Recurse -Directory -Filter "Microsoft.VC143.CRT" -ErrorAction SilentlyContinue |
-                    Where-Object { $_.FullName -like '*x64*' } | Select-Object -First 1
-          $copied = 0
-          if ($vcroot) {
-            foreach ($d in $dlls) {
-              $src = Join-Path $vcroot.FullName $d
-              if (Test-Path $src) { Copy-Item $src $deploy\; $copied++ }
-            }
-          } else {
-            $sys = Join-Path $env:SystemRoot "System32"
-            foreach ($d in $dlls) {
-              $src = Join-Path $sys $d
-              if (Test-Path $src) { Copy-Item $src $deploy\; $copied++ }
-            }
-          }
-          Write-Host "已复制 VC++ 运行库 $copied 个"
-          Get-ChildItem $deploy
-
-      - name: 安装 WiX Toolset
-        if: runner.os == 'Windows'
-        run: choco install wixtoolset --no-progress -y
-
-      - name: 生成 MSI 安装包
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # 版本号：主版本来自 VERSION，第四段(构建号)用 GITHUB_RUN_NUMBER，供 MSI 升级/降级比较
-          $root = (Get-Location).Path
-          $verFile = Join-Path $root "VERSION"
-          if (Test-Path $verFile) { $ver = (Get-Content $verFile -Raw).Trim() } else { $ver = $null }
-          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = (git describe --tags --always).Trim() }
-          $ver = $ver.TrimStart('v','V')
-          if ($ver -notmatch '^\d+\.\d+\.\d+$') { $ver = "1.0.0" }
-          $bn = $env:GITHUB_RUN_NUMBER
-          if (-not $bn) { $bn = "0" }
-          $msiVer = "$ver.$bn"
-          Write-Host "打包版本号(含构建号，用于安装器比较): $msiVer"
-          Push-Location gui/installer
-          $wix = Get-ChildItem "C:\Program Files (x86)" -Directory -Filter "WiX Toolset*" | Select-Object -First 1
-          if (-not $wix) { $wix = Get-ChildItem "C:\Program Files" -Directory -Filter "WiX Toolset*" | Select-Object -First 1 }
-          $env:PATH += ";$($wix.FullName)\bin"
-          New-Item -ItemType Directory -Force obj | Out-Null
-          heat dir ../../installer_deploy -gg -sfrag -sreg -scom -suid -srd -cg DeployFiles -dr INSTALLFOLDER -var var.DeploySource -arch x64 -out files.wxs
-          candle -arch x64 "-dVersion=$msiVer" "-dDeploySource=../../installer_deploy" -ext WixUIExtension product.wxs files.wxs -o obj/
-          light -ext WixUIExtension obj/product.wixobj obj/files.wixobj -o ../../patcher-gui-windows-x64.msi
-          if ($LASTEXITCODE -ne 0) { throw "light failed, exit code $LASTEXITCODE" }
-          Pop-Location
-          Get-ChildItem patcher-gui-windows-x64.msi
-
-      - name: Upload CLI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_cli }}
-          path: ${{ matrix.asset_cli }}.zip
-          if-no-files-found: error
-
-      - name: Upload GUI artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_gui }}
-          path: ${{ matrix.asset_gui }}.zip
-          if-no-files-found: error
-      - name: Upload MSI artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: patcher-gui-windows-x64-msi
-          path: patcher-gui-windows-x64.msi
-          if-no-files-found: error
-
-  release:
-    name: Release (自动 / 手动编译发布)
-    needs: [ build ]
-    # push 到 main 时自动发版；手动 workflow_dispatch 也可发版；PR / v* tag 只构建验证，不自动发版
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+  # ---------- Linux：CLI（make）+ 单元测试 ----------
+  linux-cli:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (读取 VERSION / CHANGELOG)
-        uses: actions/checkout@v4
-
-      - name: 计算 Release tag / 预发布
-        id: meta
-        shell: bash
-        env:
-          REL_TAG: ${{ github.event.inputs.release_tag }}
-          REL_PRE: ${{ github.event.inputs.prerelease }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+        with: { submodules: recursive, fetch-depth: 0 }
+      - name: Install zlib
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      - name: Build
+        run: make
+      - name: Test (rpz 往返 + 解包/重打包 + 注入 + 重打包 APK)
+        run: make test
+      - name: Smoke
+        run: ./build/bin/patcher --help || true
+      - name: Package CLI
         run: |
-          python3 - <<'PY'
-          import os, subprocess, json, time, urllib.request
-          from datetime import datetime
-          out=os.environ['GITHUB_OUTPUT']
-          evt=os.environ.get('GITHUB_EVENT_NAME','')
-          ver=open('VERSION').read().strip().lstrip('vV').strip()
+          mkdir -p cli_linux && cp build/bin/patcher cli_linux/ && cp build/bin/sfx_stub cli_linux/ 2>/dev/null || true
+          zip -r patcher_cli_linux64.zip cli_linux
+      - uses: actions/upload-artifact@v4
+        with: { name: cli-linux64, path: patcher_cli_linux64.zip }
 
-          def to_letters(num):
-              s=''
-              n=num
-              while True:
-                  n,r=divmod(n-1,26)
-                  s=chr(65+r)+s
-                  if n==0: break
-              return s
+  # ---------- Windows：CLI + 核心 DLL + WPF(GUI) ----------
+  windows-gui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive, fetch-depth: 0 }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - uses: microsoft/setup-msbuild@v2
 
-          if evt=='workflow_dispatch':
-              tag_in=(os.environ.get('REL_TAG') or '').strip()
-              pre=(os.environ.get('REL_PRE') or 'true').strip().lower()=='true'
-              if not tag_in:
-                  tag_in="build-%s" % datetime.utcnow().strftime('%Y%m%d-%H%M%S')
-              tag=tag_in
-              beta=''
-          else:
-              # push main 自动发测试版：v<主版本>-beta<字母>，从 A 依次递增。
-              # 「发布正式版即重置」：若已存在该主版本的正式版（非预发布），则只统计
-              #   该正式版之后发布的 beta，使发完正式版后下一个 beta 重新从 A 开始。
-              def gh_get(url, token):
-                  req=urllib.request.Request(url, headers={
-                      "Authorization":"Bearer "+token,
-                      "Accept":"application/vnd.github+json",
-                      "User-Agent":"p"})
-                  for _ in range(5):
-                      try: return json.load(urllib.request.urlopen(req, timeout=30))
-                      except Exception: time.sleep(3)
-                  return []
-              token=os.environ.get('GH_TOKEN','')
-              rels=gh_get("https://api.github.com/repos/Zz131417/renpy_patcher/releases?per_page=100", token)
-              prefix='v%s-beta' % ver
-              formal_pub=None
-              for r in rels:
-                  if r.get('tag_name')=='v%s'%ver and not r.get('prerelease', False):
-                      formal_pub=r.get('published_at') or ''
-                      break
-              n=0
-              if formal_pub:
-                  for r in rels:
-                      t=r.get('tag_name',''); p=r.get('prerelease', False); pu=r.get('published_at','') or ''
-                      if t.startswith(prefix) and p and pu > formal_pub:
-                          n+=1
-              else:
-                  for r in rels:
-                      t=r.get('tag_name',''); p=r.get('prerelease', False)
-                      if t.startswith(prefix) and p:
-                          n+=1
-              beta=to_letters(n+1)
-              tag="%s%s" % (prefix, beta)
-              pre=True
+      - name: Setup vcpkg
+        shell: cmd
+        run: |
+          git clone https://github.com/microsoft/vcpkg D:\a\vcpkg
+          D:\a\vcpkg\bootstrap-vcpkg.bat
 
-          with open(out,'a') as f:
-              f.write("version=%s\n" % ver)
-              f.write("beta_suffix=%s\n" % beta)
-              f.write("tag=%s\n" % tag)
-              f.write("prerelease=%s\n" % str(pre).lower())
-          PY
+      - name: Configure (x64)
+        run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE=D:/a/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static -DRP_BUILD_NUM=${{ github.run_number }}
 
+      - name: Build core DLL + CLI
+        run: cmake --build build --config Release --target patcher patcher_core
 
-      # 再下载产物，确保 artifacts 在 checkout 之后写入、不会被清理
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+      - name: Publish WPF GUI (self-contained)
+        run: dotnet publish gui_wpf/gui_wpf.csproj -c Release -r win-x64 --self-contained true -o gui_publish
 
-      - name: 提取本版更新说明（不指向提交记录，取自 CHANGELOG 首个版本块）
-        id: notes
+      - name: Bundle native DLL + CLI
+        shell: cmd
+        run: |
+          copy build\bin\Release\patcher_core.dll gui_publish\
+          copy build\bin\Release\patcher.exe gui_publish\
+          copy build\bin\Release\sfx_stub.exe gui_publish\
+
+      - name: Zip GUI
+        shell: cmd
+        run: powershell Compress-Archive -Path gui_publish\* -DestinationPath patcher_gui_win64.zip -Force
+
+      - name: Zip CLI (Windows)
+        shell: cmd
+        run: |
+          mkdir cli_win64
+          copy build\bin\Release\patcher.exe cli_win64\
+          copy build\bin\Release\sfx_stub.exe cli_win64\
+          powershell Compress-Archive -Path cli_win64\* -DestinationPath patcher_cli_win64.zip -Force
+
+      - name: Generate version.json
         shell: bash
         run: |
-          awk '/^## v/{c++} c==1{print} c==2{exit}' CHANGELOG.md > release_notes.md
-          echo "提取行数: $(wc -l < release_notes.md)"
+          VER=$(cat VERSION)
+          BUILD=${{ github.run_number }}
+          echo "{ \"version\": \"$VER\", \"build\": \"$BUILD\", \"commit\": \"${{ github.sha }}\", \"tag\": \"v${VER}-beta$(printf '%s' \"$BUILD\" | tail -c 1)\" }" > version.json
+          cat version.json
 
-      - name: List artifacts
-        run: ls -R artifacts
+      - uses: actions/upload-artifact@v4
+        with: { name: gui-win64, path: patcher_gui_win64.zip }
+      - uses: actions/upload-artifact@v4
+        with: { name: cli-win64, path: patcher_cli_win64.zip }
+      - uses: actions/upload-artifact@v4
+        with: { name: version-json, path: version.json }
 
-      - name: 生成 version.json（供 GUI 检查更新，含构建号）
+      - name: Draft Release
         shell: bash
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
-          printf '{\n' > artifacts/version.json
-          printf '  "tag": "${{ steps.meta.outputs.tag }}",\n' >> artifacts/version.json
-          printf '  "version": "${{ steps.meta.outputs.version }}",\n' >> artifacts/version.json
-          printf '  "build": ${{ github.run_number }},\n' >> artifacts/version.json
-          printf '  "prerelease": ${{ steps.meta.outputs.prerelease }},\n' >> artifacts/version.json
-          printf '  "date": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> artifacts/version.json
-          printf '  "url": "https://github.com/Zz131417/renpy_patcher/releases/tag/${{ steps.meta.outputs.tag }}"\n' >> artifacts/version.json
-          printf '}\n' >> artifacts/version.json
-          echo "--- version.json ---"
-          cat artifacts/version.json
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          files: artifacts/**/*
-          draft: false
-          prerelease: ${{ steps.meta.outputs.prerelease }}
-          body_path: release_notes.md
-      - name: 发布 version.json 到 latest 分支（供 GUI 检查更新读取最新构建号）
-        shell: bash
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-          mkdir -p /tmp/latest_push
-          cd /tmp/latest_push
-          git init -q
-          git config user.email "patcher@example.com"
-          git config user.name "renpy_patcher"
-          git remote add origin "https://x-access-token:${TOKEN}@github.com/Zz131417/renpy_patcher.git"
-          git fetch origin latest --depth 1 2>/dev/null || true
-          if git rev-parse origin/latest >/dev/null 2>&1; then
-            git checkout -q -B latest origin/latest
-          else
-            git checkout -q --orphan latest
-          fi
-          cp "${{ github.workspace }}/artifacts/version.json" ./version.json
-          git add version.json
-          if git diff --cached --quiet; then
-            echo "version.json 无变化，跳过推送"
-          else
-            git commit -q -m "update version.json (build ${{ github.run_number }})"
-            git push origin latest
-          fi
-
-      - name: 发布正式版后自动升 VERSION minor（仅 workflow_dispatch 的 vX.Y.Z 正式版）
-        if: >-
-          github.event_name == 'workflow_dispatch' &&
-          steps.meta.outputs.prerelease == 'false'
-        shell: bash
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-          tag="${{ steps.meta.outputs.tag }}"
-          echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "非 vX.Y.Z 正式版（$tag），跳过自动升版"; exit 0; }
-          IFS='.' read -r MAJ MIN PAT <<< "${tag#v}"
-          MIN=$((10#$MIN + 1))
-          NEW="${MAJ}.${MIN}.0"
-          echo "发布正式版 $tag 后，VERSION 自动升至 $NEW"
-          git config user.email "patcher@example.com"
-          git config user.name "renpy_patcher"
-          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/Zz131417/renpy_patcher.git"
-          git fetch origin main --depth 1 2>/dev/null || true
-          git checkout -q -B main origin/main 2>/dev/null || git checkout -q main 2>/dev/null || true
-          printf '%s\n' "$NEW" > VERSION
-          git add VERSION
-          if git diff --cached --quiet; then echo "VERSION 无变化，跳过"; exit 0; fi
-          git commit -q -m "chore: 发布正式版 $tag 后自动升 VERSION 至 $NEW"
-          git push origin main
-          echo "已推送 VERSION=$NEW 到 main"
-
-
+          VER=$(cat VERSION); BUILD=${{ github.run_number }}
+          TAG="v${VER}-beta${BUILD}"
+          gh release create "$TAG" --draft --title "$TAG (测试版)" \
+            --notes "Ren'Py Patcher 测试版（含 GUI）。GUI 基于 WPF，通过 patcher_core.dll 调用核心库；CLI 二进制 patcher.exe 仍可用。解包/重打包/注入/来源声明/导出zip/导出APK/分支导图/翻译流水线。" \
+            patcher_gui_win64.zip patcher_cli_win64.zip version.json

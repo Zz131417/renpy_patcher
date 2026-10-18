@@ -12,7 +12,8 @@
 static FILE *g_logf  = NULL;
 static int   g_level = LOG_INFO;
 static char  g_tag[64] = "";
-static char  g_last_err[1024] = "";   /* 最近一条错误详情，供 GUI 取回 */   /* 已含方括号，如 "[main]" 或空 */
+static char  g_last_err[1024] = "";   /* 最近一条错误详情，供 GUI 取回 */
+static rp_log_callback_t g_log_cb = NULL;
 
 void log_set_tag(const char *tag) {
     if (tag && *tag) snprintf(g_tag, sizeof(g_tag), "[%s]", tag);
@@ -66,7 +67,10 @@ void log_printf(int level, const char *fmt, ...) {
         strncpy(g_last_err, msg, sizeof(g_last_err) - 1);
         g_last_err[sizeof(g_last_err) - 1] = 0;
     }
+    if (g_log_cb) g_log_cb(level, msg);
 }
+
+void log_set_callback(rp_log_callback_t cb) { g_log_cb = cb; }
 
 /* ---- 最后错误 / 错误码翻译（供 GUI 显示详细报错）---- */
 void rp_set_error(const char *fmt, ...)

@@ -13,7 +13,7 @@
 | 压缩 | **zlib**（RPA 内嵌 deflate；自研 `zlib_wrap` 封装 inflate/deflate），源码内置 `third_party/zlib` |
 | 序列化 | 自研 **pickle_min**：解析 CPython 协议 2/3/4 的 `pickle`，用于读取与重写 Ren'Py 索引 |
 | 资源格式 | **RPA-3.0**：头部 `RPA-3.0` + 8 字节索引偏移 + 4 字节 XOR prefix；索引（pickle）位于数据段之后 |
-| 构建系统 | **CMake ≥ 3.17**（核心静态库 `renpy_core` + CLI `patcher` 可执行 + Windows GUI `patcher_gui`）；zlib 源码内置，无 vcpkg / 系统 zlib |
+| 构建系统 | **CMake ≥ 3.17**（核心静态库 `renpy_core` + CLI `patcher` 可执行 + Windows 核心 DLL `patcher_core.dll`）；WPF GUI 在 `gui_wpf/`（.NET 8，单独 `dotnet publish`） |
 | 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译；推送 `main` 自动发测试版，手动 `workflow_dispatch` 发正式版 |
 | 热注入（Windows） | DLL 注入（`CreateRemoteThread` + `LoadLibrary`）+ **CPython C-API** 桥（`py_bridge.c` 定位宿主解释器并执行 `mod_main.py`） |
 | 扩展机制 | 统一模块契约（`core/plugin.h`）+ 中央注册表（`core/plugin_loader`） |
@@ -24,7 +24,7 @@
 
 ```
 .
-├── CMakeLists.txt            # 构建定义：renpy_core 静态库 + patcher 可执行 + patcher_gui（Windows GUI）
+├── CMakeLists.txt            # 构建定义：renpy_core 静态库 + patcher 可执行 + patcher_core.dll（Windows 核心 DLL，供 WPF P/Invoke）
 ├── VERSION                   # 版本号（语义化版本，单一事实来源）
 ├── CHANGELOG.md              # 更新日志（随发版更新）
 ├── LICENSE                   # 非商业许可证（禁止商业使用）
@@ -71,9 +71,10 @@
 │       ├── agent.c/.h       #   被注入的 DLL 载荷
 │       ├── inject_api.c     #   热注入入口（非 Windows 为 stub）
 │       └── py_bridge.c/.h   #   定位宿主 CPython 并执行 mod_main.py
-├── gui/                     # Windows GUI（C++/CLI + .NET WinForms，复用 renpy_core）
-│   ├── Program.cpp          #   托管入口 main()
-│   ├── MainForm.h/.cpp      #   主窗口与事件（含 try/catch 防崩溃、报错显示、检查更新）
+├── gui_wpf/                 # Windows GUI（C# + WPF / .NET 8，P/Invoke 调 patcher_core.dll）
+│   ├── MainWindow.xaml/cs   #   主窗口：底部三页导航 + 各功能页 + 日志/进度
+│   ├── Native.cs           #   P/Invoke 桥接到 patcher_core.dll
+│   └── App.xaml/cs         #   应用入口与界面设置加载
 ├── cli/
 │   └── main.c               # 命令行入口（子命令分发）
 └── tests/                   # 演示游戏 + 汉化 mod + 验证脚本
@@ -113,7 +114,7 @@ zlib 以源码形式内置在 `third_party/zlib`，由 CMake `add_subdirectory` 
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-# 产物：build/patcher（Linux），build/Release/patcher.exe + patcher_gui.exe（Windows）
+# 产物：build/patcher（Linux），build/Release/patcher.exe + patcher_core.dll（Windows）；gui_wpf 经 dotnet publish 产出 renpy_patcher_gui.exe
 ```
 
 ### 单文件 gcc 快速编译（开发迭代用）
@@ -166,9 +167,9 @@ gdb --args /tmp/patcher_dbg unpack game.rpa -o out
 
 ### 常见编译 / 链接问题
 
-1. **Windows C++/CLI「未声明的标识符」（如 `btnBrowseBranchOut`）**
+1. **Windows GUI 构建报错「未声明的标识符」**
    控件在 `MainForm.cpp` 里用了，但 `MainForm.h` 的控件声明块漏了对应的 `Button^` / `TextBox^` 成员。
-   头文件补声明即可。C++/CLI 不像脚本语言容忍未声明变量。
+   多为 XAML 中引用的控件未在代码隐藏文件声明，或 P/Invoke 委托签名与原生回调不一致（尤其容易漏掉 `void* user` 参数）。核对 `Native.cs` 与 `core_api/core_api.h` 的回调签名。
 2. **`core/version.h: No such file`**
    必须先跑一次 `cmake -B build -S .` 生成 `version.h`，单文件 gcc 才能编。
 3. **`undefined reference to deflateInit2`**

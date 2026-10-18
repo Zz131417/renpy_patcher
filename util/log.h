@@ -24,6 +24,10 @@ void log_set_tag(const char *tag);
 /* 格式化写日志（用法同 printf） */
 void log_printf(int level, const char *fmt, ...);
 
+/* 日志回调（GUI 用）：设置后每条日志除 stderr/文件外还会回调。传 NULL 取消。 */
+typedef void (*rp_log_callback_t)(int level, const char *msg);
+void log_set_callback(rp_log_callback_t cb);
+
 /* 设置 / 获取最近一条错误详情（log_error 会自动写入 g_last_err） */
 void rp_set_error(const char *fmt, ...);
 const char *rp_last_error(void);

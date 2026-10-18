@@ -2,7 +2,14 @@
 
 > 版本号格式 `X.Y.Z`。**正式版**从 `v1.0.0` 起标记发布；此前 `v0.1.x` 系列为预发布（非正式）版本，仅供先行体验与反馈。
 
-## v1.3.0（开发中）
+## v1.4.0（开发中）
+
+### 重大变更：GUI 用 WPF 重写（取代旧 C++/CLI WinForms）
+- 核心 C 库编成 `patcher_core.dll`（Windows，导出见 `core_api/core_api.h`），GUI 通过 P/Invoke 调用；**CLI 仍独立可用**（二者共用同一核心代码，逻辑完全一致）。
+- 新 GUI 工程位于 `gui_wpf/`（C# / .NET 8 / WPF）：底部三页导航（游戏管理 / 主页 / 设置）、页面切换滑入动画、日志与进度实时显示。
+- 设置页可实时调整圆角 / 动画 / 背景模糊（Windows DWM）/ 字体 / 字号，自动持久化到本机 AppData。
+- 旧 `gui/`（C++/CLI WinForms）已删除；CI 改为构建 `patcher_core.dll` + 发布自包含 WPF 包。
+- 注：下方 1.3.0 开发期里「GUI 美化 / 设置页 / 底部导航重构」等条目描述的是上一版 WinForms GUI，已随本次重写被取代。
 
 ### 文档
 - 新增 [MOD.md](doc/MOD.md)：mod 开发 / 调用文档，覆盖**文件级 mod**（build 合并）、**翻译 mod**（translate build 生成 old/new）、**热注入 mod**（hotinject 注入，`mod_main.py` 的 `on_attach()` 生命周期与宿主 Python 访问）三类，含目录结构、调用命令、最小示例与综合汉化示例。
