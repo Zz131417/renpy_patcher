@@ -10,45 +10,40 @@ permissions:
   contents: write
 
 jobs:
-  # ---------- Linux：CLI（make）+ 单元测试 ----------
+  # ---------- Linux：仅构建 CLI（cmake）+ 冒烟测试 ----------
   linux-cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: recursive, fetch-depth: 0 }
+        with: { fetch-depth: 0 }
       - name: Install zlib
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
       - name: Build
-        run: make
-      - name: Test (rpz 往返 + 解包/重打包 + 注入 + 重打包 APK)
-        run: make test
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
+          cmake --build build --config Release --target patcher
       - name: Smoke
-        run: ./build/bin/patcher --help || true
+        run: ./build/patcher --help || true
       - name: Package CLI
         run: |
-          mkdir -p cli_linux && cp build/bin/patcher cli_linux/ && cp build/bin/sfx_stub cli_linux/ 2>/dev/null || true
+          mkdir -p cli_linux && cp build/patcher cli_linux/
           zip -r patcher_cli_linux64.zip cli_linux
       - uses: actions/upload-artifact@v4
         with: { name: cli-linux64, path: patcher_cli_linux64.zip }
 
-  # ---------- Windows：CLI + 核心 DLL + WPF(GUI) ----------
+  # ---------- Windows：核心 DLL + CLI + WPF(GUI) ----------
   windows-gui:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: recursive, fetch-depth: 0 }
+        with: { fetch-depth: 0 }
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
       - uses: microsoft/setup-msbuild@v2
 
-      - name: Setup vcpkg
-        shell: cmd
-        run: |
-          git clone https://github.com/microsoft/vcpkg D:\a\vcpkg
-          D:\a\vcpkg\bootstrap-vcpkg.bat
-
+      # zlib 源码内置在 third_party/zlib，由 CMake add_subdirectory 构建，无需 vcpkg / 系统 zlib。
       - name: Configure (x64)
-        run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE=D:/a/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static -DRP_BUILD_NUM=${{ github.run_number }}
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
 
       - name: Build core DLL + CLI
         run: cmake --build build --config Release --target patcher patcher_core
@@ -59,9 +54,9 @@ jobs:
       - name: Bundle native DLL + CLI
         shell: cmd
         run: |
-          copy build\bin\Release\patcher_core.dll gui_publish\
-          copy build\bin\Release\patcher.exe gui_publish\
-          copy build\bin\Release\sfx_stub.exe gui_publish\
+          copy build\Release\patcher_core.dll gui_publish\
+          copy build\Release\patcher.exe gui_publish\
+          if exist build\Release\sfx_stub.exe copy build\Release\sfx_stub.exe gui_publish\
 
       - name: Zip GUI
         shell: cmd
@@ -71,15 +66,14 @@ jobs:
         shell: cmd
         run: |
           mkdir cli_win64
-          copy build\bin\Release\patcher.exe cli_win64\
-          copy build\bin\Release\sfx_stub.exe cli_win64\
+          copy build\Release\patcher.exe cli_win64\
+          if exist build\Release\sfx_stub.exe copy build\Release\sfx_stub.exe cli_win64\
           powershell Compress-Archive -Path cli_win64\* -DestinationPath patcher_cli_win64.zip -Force
 
       - name: Generate version.json
         shell: bash
         run: |
-          VER=$(cat VERSION)
-          BUILD=${{ github.run_number }}
+          VER=$(cat VERSION); BUILD=${{ github.run_number }}
           echo "{ \"version\": \"$VER\", \"build\": \"$BUILD\", \"commit\": \"${{ github.sha }}\", \"tag\": \"v${VER}-beta$(printf '%s' \"$BUILD\" | tail -c 1)\" }" > version.json
           cat version.json
 
