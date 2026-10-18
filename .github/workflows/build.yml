@@ -92,17 +92,26 @@ jobs:
         run: |
           set -e
           export VER=$(cat VERSION | tr -d '[:space:]')
-          # 当前主版本下已有最大 beta 字母（A-Z）；无则 A。发正式版后若 bump 版本，新版本自然从 A 重算。
-          LAST=$(gh api "repos/${{ github.repository }}/releases?per_page=100" \
-            -q ".[] | select(.tag_name | test(\"^v${VER}-beta[A-Za-z]+$\")) | .tag_name" \
-            | sed "s/^v${VER}-beta//" | sort | tail -1)
-          if [ -z "$LAST" ]; then NEXT="A"; else NEXT=$(printf "%c" $(( $(printf "%d" "'$LAST") + 1 ))); fi
-          export TAG="v${VER}-beta${NEXT}"
           export BUILD="${{ github.run_number }}"
           export DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # 下一个 beta 字母：查 git tags 中当前主版本最大的 beta 字母 +1；无则 A。
+          # （发正式版若 bump 主版本号，新版本下没有 betaX，自然从 A 重算。）
+          python3 - <<'PY' > /tmp/next_tag.txt
+          import os, json, re, urllib.request
+          TOKEN = os.environ["GITHUB_TOKEN"]; REPO = os.environ["GITHUB_REPOSITORY"]; VER = os.environ["VER"]
+          H = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json"}
+          tags = json.load(urllib.request.urlopen(
+              urllib.request.Request(f"https://api.github.com/repos/{REPO}/tags?per_page=200", headers=H), timeout=30))
+          letters = [m.group(1) for t in tags
+                     if (m := re.match(rf"^v{re.escape(VER)}-beta([A-Za-z]+)$", t["name"]))]
+          nxt = "A" if not letters else chr(ord(sorted(letters)[-1]) + 1)
+          print(f"v{VER}-beta{nxt}")
+          PY
+          export TAG=$(cat /tmp/next_tag.txt)
           export URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          echo "下一个测试版标签: $TAG"
           # 生成 version.json（与 latest 分支既有格式一致）
-          python3 - <<PY
+          python3 - <<'PY'
           import os,json
           body={"tag":os.environ["TAG"],"version":os.environ["VER"],"build":int(os.environ["BUILD"]),
                 "prerelease":True,"date":os.environ["DATE"],"url":os.environ["URL"]}
