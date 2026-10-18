@@ -1,0 +1,44 @@
+<Window x:Class="RenPyPatcherGui.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="设置" Height="420" Width="360" WindowStartupLocation="CenterOwner"
+        Background="#FFFFFF" ResizeMode="NoResize" ShowInTaskbar="False">
+    <DockPanel Margin="18">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="btnReset" Content="恢复默认" Width="100" Click="BtnReset_Click"/>
+            <Button x:Name="btnClose" Content="关闭" Width="80" Margin="10,0,0,0"
+                    Style="{StaticResource PrimaryButton}" Click="BtnClose_Click" IsDefault="True"/>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="界面外观设置" FontSize="15" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,12"/>
+
+                <CheckBox x:Name="chkRound" Content="圆角（按钮 / 卡片）" Margin="0,6" Checked="ChkRound_Changed" Unchecked="ChkRound_Changed"/>
+                <CheckBox x:Name="chkAnim" Content="页面切换动画" Margin="0,6" Checked="ChkAnim_Changed" Unchecked="ChkAnim_Changed"/>
+                <CheckBox x:Name="chkBlur" Content="背景模糊（Windows DWM）" Margin="0,6" Checked="ChkBlur_Changed" Unchecked="ChkBlur_Changed"/>
+
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
+                    <Label Content="字体"/>
+                    <ComboBox x:Name="cmbFont" Grid.Column="1" Margin="4" SelectionChanged="CmbFont_Changed">
+                        <ComboBoxItem Content="Microsoft YaHei UI"/><ComboBoxItem Content="Microsoft YaHei"/>
+                        <ComboBoxItem Content="SimSun"/><ComboBoxItem Content="DengXian"/>
+                        <ComboBoxItem Content="SimHei"/><ComboBoxItem Content="Segoe UI"/>
+                    </ComboBox>
+                </Grid>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
+                    <Label Content="字号"/>
+                    <ComboBox x:Name="cmbFontSize" Grid.Column="1" Margin="4" SelectionChanged="CmbFontSize_Changed">
+                        <ComboBoxItem Content="10"/><ComboBoxItem Content="11"/><ComboBoxItem Content="12"/>
+                        <ComboBoxItem Content="13"/><ComboBoxItem Content="14"/><ComboBoxItem Content="16"/>
+                    </ComboBox>
+                </Grid>
+
+                <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,14,0,0" TextWrapping="Wrap">
+                    界面外观设置保存在本机 settings/gui.json，不影响核心解包逻辑。
+                </TextBlock>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

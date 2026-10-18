@@ -13,301 +13,116 @@
         <!-- 顶部栏 -->
         <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
             <Grid Height="50">
-                <Button x:Name="btnSettings" Content="⚙ 设置" HorizontalAlignment="Left" Margin="12,0,0,0"
-                        Style="{StaticResource NavButton}" Click="BtnSettings_Click"/>
+                <!-- 左上角：设置（齿轮图标按钮，无文字） -->
+                <Button x:Name="btnSettings" HorizontalAlignment="Left" Margin="8,0,0,0"
+                        Width="40" Height="40" Background="Transparent" BorderThickness="0"
+                        ToolTip="设置" Click="BtnSettings_Click">
+                    <Viewbox Width="22" Height="22">
+                        <Path Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22 L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
+                              Fill="#0F172A" Stretch="Uniform"/>
+                    </Viewbox>
+                </Button>
+
                 <TextBlock Text="Ren'Py Patcher" HorizontalAlignment="Center" VerticalAlignment="Center"
                            FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
+
+                <!-- 右上角：日志（图标按钮，无文字） -->
+                <Button x:Name="btnLog" HorizontalAlignment="Right" Margin="0,0,8,0"
+                        Width="40" Height="40" Background="Transparent" BorderThickness="0"
+                        ToolTip="日志" Click="BtnLog_Click">
+                    <Viewbox Width="22" Height="22">
+                        <Path Data="M13,3H11V9H13V3M9,13H7V11H9V13M9,17H7V15H9V17M13,11H11V13H13V11M13,15H11V17H13V15M13,19H11V21H13V19M15,11H17V13H15V11M15,15H17V17H15V15M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3Z"
+                              Fill="#0F172A" Stretch="Uniform"/>
+                    </Viewbox>
+                </Button>
             </Grid>
         </Border>
 
-        <!-- 主内容 -->
-        <Grid Grid.Row="1">
-            <!-- 游戏管理（默认页） -->
-            <ScrollViewer x:Name="pageGame" VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="16">
-                    <!-- 空状态：请导入游戏 -->
-                    <Border x:Name="emptyState" Visibility="Collapsed" Margin="0,4,0,12"
-                            Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" Padding="28,22">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="📥 请导入游戏" FontSize="20" FontWeight="Bold"
-                                       Foreground="#0F172A" HorizontalAlignment="Center"/>
-                            <TextBlock Text="在下方填写「名称」与「路径」点「添加 / 更新」登记；或将压缩包 / 文件夹直接拖入本窗口导入（zip 自动解压进 game/）。"
-                                       Foreground="#64748B" FontSize="13" Margin="0,8,0,0"
-                                       HorizontalAlignment="Center" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-
-                    <GroupBox Header="游戏别名登记">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition/><RowDefinition/><RowDefinition/>
-                                </Grid.RowDefinitions>
-                                <Label Grid.Row="0" Grid.Column="0" Content="名称"/>
-                                <TextBox x:Name="txtAliasName" Grid.Row="0" Grid.Column="1" Margin="4"/>
-                                <Label Grid.Row="0" Grid.Column="2" Content="路径"/>
-                                <Grid Grid.Row="0" Grid.Column="3">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="txtAliasPath" Grid.Column="0" Margin="4"/>
-                                    <Button x:Name="btnBrowseAlias" Grid.Column="1" Content="浏览" Width="60" Click="BtnBrowseAlias_Click"/>
-                                </Grid>
-                                <Label Grid.Row="1" Grid.Column="0" Content="备注"/>
-                                <TextBox x:Name="txtAliasNote" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Margin="4"/>
-                            </Grid>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <Button x:Name="btnAliasAdd" Content="添加 / 更新" Width="100" Style="{StaticResource PrimaryButton}" Click="BtnAliasAdd_Click"/>
-                                <Button x:Name="btnAliasRemove" Content="删除选中" Width="90" Margin="8,0,0,0" Click="BtnAliasRemove_Click"/>
-                            </StackPanel>
-
-                            <!-- 从压缩包导入：解压进 game/ 目录，仅此类游戏会放进 game/ -->
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Label Content="导入名称"/>
-                                <TextBox x:Name="txtImportName" Grid.Column="1" Margin="4"/>
-                                <Button x:Name="btnImportZip" Grid.Column="2" Content="从压缩包导入" Width="110" Style="{StaticResource PrimaryButton}" Click="BtnImportZip_Click"/>
-                            </Grid>
-
-                            <!-- 已登记游戏列表：名字 | 管理 | 启动 -->
-                            <ListBox x:Name="lstGames" Margin="0,10,0,0" BorderThickness="0" Background="Transparent" MaxHeight="240">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" Padding="10,8" Margin="0,0,0,6">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="#0F172A"/>
-                                                    <TextBlock Text="{Binding Note}" FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0"/>
-                                                </StackPanel>
-                                                <Button Grid.Column="1" Content="管理" Width="64" Margin="6,0,0,0"
-                                                        Style="{StaticResource PrimaryButton}"
-                                                        Click="BtnGameManage_Click" Tag="{Binding Name}"/>
-                                                <Button Grid.Column="2" Content="启动" Width="64" Margin="6,0,0,0"
-                                                        Click="BtnGameLaunch_Click" Tag="{Binding Name}"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <GroupBox Header="解包 / 重打包">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Label Content="游戏/路径"/><TextBox x:Name="txtUnpackGame" Grid.Column="1" Margin="4"/>
-                                <Button x:Name="btnUnpack" Grid.Column="2" Content="解包" Width="70" Style="{StaticResource PrimaryButton}" Click="BtnUnpack_Click"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Label Content="输出目录"/><TextBox x:Name="txtUnpackOut" Grid.Column="1" Margin="4"/>
-                                <Button x:Name="btnBrowseUnpackOut" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseUnpackOut_Click"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Label Content="重打包目录"/><TextBox x:Name="txtBuildDir" Grid.Column="1" Margin="4"/>
-                                <Button x:Name="btnBuild" Grid.Column="2" Content="重打包" Width="70" Style="{StaticResource PrimaryButton}" Click="BtnBuild_Click"/>
-                            </Grid>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <GroupBox Header="注入 Mod">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Label Content="已解包目录"/><TextBox x:Name="txtModTarget" Grid.Column="1" Margin="4"/>
-                                <Label Grid.Column="2" Content="Mod目录"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBox x:Name="txtModDir" Margin="4"/>
-                                <Button x:Name="btnBrowseModDir" Grid.Column="1" Content="浏览" Width="60" Click="BtnBrowseModDir_Click"/>
-                            </Grid>
-                            <Button x:Name="btnMod" Content="注入" Width="80" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnMod_Click"/>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <GroupBox Header="来源声明（追加到 .rpa）">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="游戏/路径"/><TextBox x:Name="txtCreditGame" Grid.Column="1" Margin="4"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="输出 rpa"/><TextBox x:Name="txtCreditOut" Grid.Column="1" Margin="4"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="署名"/><TextBox x:Name="txtCreditName" Grid.Column="1" Margin="4"/>
-                            </Grid>
-                            <Button x:Name="btnCredit" Content="生成来源声明" Width="140" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnCredit_Click"/>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <GroupBox Header="导出">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Label Content="源目录"/><TextBox x:Name="txtExportDir" Grid.Column="1" Margin="4"/>
-                                <Button x:Name="btnBrowseExportDir" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseExportDir_Click"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                                <Label Content="输出"/><TextBox x:Name="txtExportOut" Grid.Column="1" Margin="4"/>
-                                <Label Grid.Column="2" Content="分卷MB"/>
-                                <TextBox x:Name="txtSplitMb" Grid.Column="3" Margin="4" Text="0"/>
-                            </Grid>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <Button x:Name="btnExport" Content="导出 zip" Width="100" Style="{StaticResource PrimaryButton}" Click="BtnExport_Click"/>
-                                <Button x:Name="btnExportApk" Content="导出 APK" Width="100" Margin="8,0,0,0" Click="BtnExportApk_Click"/>
-                            </StackPanel>
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="APK Mod目录"/><TextBox x:Name="txtApkMod" Grid.Column="1" Margin="4"/>
-                            </Grid>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <GroupBox Header="聊天 / 选择分支导图">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Label Content="游戏目录"/><TextBox x:Name="txtBranchDir" Grid.Column="1" Margin="4"/>
-                                <Button x:Name="btnBrowseBranchDir" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseBranchDir_Click"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="120"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="格式"/>
-                                <ComboBox x:Name="cmbBranchFmt" Grid.Column="1" Margin="4" SelectedIndex="0">
-                                    <ComboBoxItem Content="mermaid"/><ComboBoxItem Content="json"/>
-                                    <ComboBoxItem Content="dot"/><ComboBoxItem Content="tree"/>
-                                </ComboBox>
-                                <Label Grid.Column="2" Content="输出"/><TextBox x:Name="txtBranchOut" Grid.Column="3" Margin="4"/>
-                            </Grid>
-                            <Button x:Name="btnBranch" Content="生成导图" Width="100" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnBranch_Click"/>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <GroupBox Header="翻译流水线">
-                        <StackPanel>
-                            <TextBlock FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,4">1) 抽取对话</TextBlock>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Label Content="游戏目录"/><TextBox x:Name="txtTrDir" Grid.Column="1" Margin="4"/>
-                                <Button x:Name="btnBrowseTrDir" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseTrDir_Click"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="输出JSON"/><TextBox x:Name="txtTrJson" Grid.Column="1" Margin="4"/>
-                            </Grid>
-                            <Button x:Name="btnTrExtract" Content="抽取" Width="80" Margin="0,4,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnTrExtract_Click"/>
-
-                            <TextBlock FontWeight="Bold" Foreground="#64748B" Margin="8,8,0,4">2) AI 翻译</TextBlock>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="源JSON"/><TextBox x:Name="txtTrSrc" Grid.Column="1" Margin="4"/>
-                                <Label Grid.Column="2" Content="输出"/><TextBox x:Name="txtTrOut" Grid.Column="3" Margin="4"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="源语言"/><TextBox x:Name="txtTrFrom" Grid.Column="1" Margin="4" Text="zh"/>
-                                <Label Grid.Column="2" Content="目标"/><TextBox x:Name="txtTrTo" Grid.Column="3" Margin="4" Text="en"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="BaseURL"/><TextBox x:Name="txtTrBase" Grid.Column="1" Margin="4"/>
-                                <Label Grid.Column="2" Content="模型"/><TextBox x:Name="txtTrModel" Grid.Column="3" Margin="4"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="APIKey"/><PasswordBox x:Name="txtTrKey" Grid.Column="1" Margin="4"/>
-                            </Grid>
-                            <Button x:Name="btnTrAi" Content="AI 翻译" Width="90" Margin="0,4,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnTrAi_Click"/>
-
-                            <TextBlock FontWeight="Bold" Foreground="#64748B" Margin="8,8,0,4">3) 回写</TextBlock>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
-                                <Label Content="翻译JSON"/><TextBox x:Name="txtTrBuildJson" Grid.Column="1" Margin="4"/>
-                                <Label Grid.Column="2" Content="语言"/><TextBox x:Name="txtTrLang" Grid.Column="3" Margin="4" Text="en"/>
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Label Content="输出目录"/><TextBox x:Name="txtTrBuildOut" Grid.Column="1" Margin="4"/>
-                            </Grid>
-                            <Button x:Name="btnTrBuild" Content="回写 Mod" Width="100" Margin="0,4,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnTrBuild_Click"/>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <Border Background="#0F172A" Margin="0,4,0,0" Padding="8">
-                        <StackPanel>
-                            <ProgressBar x:Name="pbProgress" Height="4" Minimum="0" Maximum="100" Value="0" Background="#1E293B" Foreground="#38BDF8"/>
-                            <TextBlock x:Name="txtStatus" Foreground="#E2E8F0" FontSize="11" Margin="0,4,0,2" Text="就绪"/>
-                            <ListBox x:Name="lstLog" Background="#0F172A" Foreground="#CBD5E1" FontSize="11" Height="160" BorderThickness="0"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- 设置遮罩（点击关闭） -->
-            <Border x:Name="settingsBackdrop" Background="#50000000" Visibility="Collapsed" MouseDown="SettingsBackdrop_Click"/>
-
-            <!-- 设置飞出面板（左上角） -->
-            <Border x:Name="settingsPanel" HorizontalAlignment="Left" Width="0" Visibility="Collapsed"
-                    Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
-                <DockPanel LastChildFill="True" Margin="16">
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
-                        <TextBlock Text="设置" FontSize="16" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="txtVer" Foreground="#94A3B8" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"/>
+        <!-- 主内容（游戏管理默认页） -->
+        <ScrollViewer x:Name="pageGame" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="16">
+                <!-- 空状态：请导入游戏 -->
+                <Border x:Name="emptyState" Visibility="Collapsed" Margin="0,4,0,12"
+                        Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" Padding="28,22">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="📥 请导入游戏" FontSize="20" FontWeight="Bold"
+                                   Foreground="#0F172A" HorizontalAlignment="Center"/>
+                        <TextBlock Text="在上方填写「名称」与「路径」点「添加 / 更新」登记；或将压缩包 / 文件夹直接拖入本窗口导入（zip 自动解压进 game/）。"
+                                   Foreground="#64748B" FontSize="13" Margin="0,8,0,0"
+                                   HorizontalAlignment="Center" TextWrapping="Wrap"/>
                     </StackPanel>
-                    <Button x:Name="btnSettingsClose" DockPanel.Dock="Bottom" Content="关闭" HorizontalAlignment="Left" Width="80"
-                            Style="{StaticResource PrimaryButton}" Click="BtnSettingsClose_Click"/>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <CheckBox x:Name="chkRound" Content="圆角（按钮 / 卡片）" Margin="0,4" Checked="ChkRound_Changed" Unchecked="ChkRound_Changed"/>
-                            <CheckBox x:Name="chkAnim" Content="页面切换动画" Margin="0,4" Checked="ChkAnim_Changed" Unchecked="ChkAnim_Changed"/>
-                            <CheckBox x:Name="chkBlur" Content="背景模糊（Windows DWM）" Margin="0,4" Checked="ChkBlur_Changed" Unchecked="ChkBlur_Changed"/>
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
-                                <Label Content="字体"/>
-                                <ComboBox x:Name="cmbFont" Grid.Column="1" Margin="4" SelectionChanged="CmbFont_Changed">
-                                    <ComboBoxItem Content="Microsoft YaHei UI"/><ComboBoxItem Content="Microsoft YaHei"/>
-                                    <ComboBoxItem Content="SimSun"/><ComboBoxItem Content="DengXian"/>
-                                    <ComboBoxItem Content="SimHei"/><ComboBoxItem Content="Segoe UI"/>
-                                </ComboBox>
-                            </Grid>
-                            <Grid Margin="0,6,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
-                                <Label Content="字号"/>
-                                <ComboBox x:Name="cmbFontSize" Grid.Column="1" Margin="4" SelectionChanged="CmbFontSize_Changed">
-                                    <ComboBoxItem Content="10"/><ComboBoxItem Content="11"/><ComboBoxItem Content="12"/>
-                                    <ComboBoxItem Content="13"/><ComboBoxItem Content="14"/><ComboBoxItem Content="16"/>
-                                </ComboBox>
-                            </Grid>
-                            <Button x:Name="btnResetUi" Content="恢复默认" Width="100" Margin="0,10,0,0" Click="BtnResetUi_Click"/>
-                            <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap">
-                                界面外观设置保存在本机 AppData，不影响核心解包逻辑。
-                            </TextBlock>
-                        </StackPanel>
-                    </ScrollViewer>
-                </DockPanel>
-            </Border>
+                </Border>
 
-            <!-- 首次添加游戏后，添加按钮浮动到右下角 -->
-            <Button x:Name="btnAddFab" Content="＋ 添加游戏" Visibility="Collapsed"
-                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,20"
-                    Padding="14,9" FontSize="13" FontWeight="Bold"
-                    Style="{StaticResource PrimaryButton}" Click="BtnAddFab_Click"/>
-        </Grid>
+                <GroupBox Header="游戏别名登记">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <Label Grid.Row="0" Grid.Column="0" Content="名称"/>
+                            <TextBox x:Name="txtAliasName" Grid.Row="0" Grid.Column="1" Margin="4"/>
+                            <Label Grid.Row="0" Grid.Column="2" Content="路径"/>
+                            <Grid Grid.Row="0" Grid.Column="3">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtAliasPath" Grid.Column="0" Margin="4"/>
+                                <Button x:Name="btnBrowseAlias" Grid.Column="1" Content="浏览" Width="60" Click="BtnBrowseAlias_Click"/>
+                            </Grid>
+                            <Label Grid.Row="1" Grid.Column="0" Content="备注"/>
+                            <TextBox x:Name="txtAliasNote" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Margin="4"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="btnAliasAdd" Content="添加 / 更新" Width="100" Style="{StaticResource PrimaryButton}" Click="BtnAliasAdd_Click"/>
+                            <Button x:Name="btnAliasRemove" Content="删除选中" Width="90" Margin="8,0,0,0" Click="BtnAliasRemove_Click"/>
+                        </StackPanel>
+
+                        <!-- 从压缩包导入：解压进 game/ 目录，仅此类游戏会放进 game/ -->
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Label Content="导入名称"/>
+                            <TextBox x:Name="txtImportName" Grid.Column="1" Margin="4"/>
+                            <Button x:Name="btnImportZip" Grid.Column="2" Content="从压缩包导入" Width="110" Style="{StaticResource PrimaryButton}" Click="BtnImportZip_Click"/>
+                        </Grid>
+
+                        <!-- 已登记游戏列表：名字 | 管理 | 启动 -->
+                        <ListBox x:Name="lstGames" Margin="0,10,0,0" BorderThickness="0" Background="Transparent" MaxHeight="240">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" Padding="10,8" Margin="0,0,0,6">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="#0F172A"/>
+                                                <TextBlock Text="{Binding Note}" FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="管理" Width="64" Margin="6,0,0,0"
+                                                    Style="{StaticResource PrimaryButton}"
+                                                    Click="BtnGameManage_Click" Tag="{Binding Name}"/>
+                                            <Button Grid.Column="2" Content="启动" Width="64" Margin="6,0,0,0"
+                                                    Click="BtnGameLaunch_Click" Tag="{Binding Name}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 首次添加游戏后，添加按钮浮动到右下角 -->
+        <Button x:Name="btnAddFab" Content="＋ 添加游戏" Visibility="Collapsed"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,20"
+                Padding="14,9" FontSize="13" FontWeight="Bold"
+                Style="{StaticResource PrimaryButton}" Click="BtnAddFab_Click"/>
     </Grid>
 </Window>

@@ -5,11 +5,8 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
 using Microsoft.Win32;
 
 namespace RenPyPatcherGui
@@ -28,7 +25,6 @@ namespace RenPyPatcherGui
         private Native.LogCallback _logCb;
         private Native.ProgressCallback _progCb;
         private Native.GameCallback _gameCb;
-        private bool _busy = false;
 
         // 游戏列表数据源
         private ObservableCollection<GameEntry> _games = new ObservableCollection<GameEntry>();
@@ -36,6 +32,9 @@ namespace RenPyPatcherGui
 
         // 数据目录（位于可执行文件目录下，便于便携）：game/ 存游戏，settings/ 存登记表与界面设置
         private string _baseDir, _gameDir, _settingsDir;
+
+        // 日志窗口单例
+        private LogWindow _logWin;
 
         public MainWindow()
         {
@@ -67,97 +66,46 @@ namespace RenPyPatcherGui
 
             _gameCb = GameCallbackImpl;
 
-            txtVer.Text = "版本 " + Native.rp_version_string();
-
             ApplySettings();
             RefreshGames();
-            Log(1, "GUI 已就绪");
+            LogHub.Add(1, "GUI 已就绪");
         }
 
-        // ---------------- 设置应用 ----------------
+        // ---------------- 设置应用（本窗口外观） ----------------
         private void ApplySettings()
         {
             var s = App.Settings;
             FontFamily = new FontFamily(s.FontFamily);
             FontSize = s.FontSize;
             App.Current.Resources["CornerRadius"] = s.Round ? 8.0 : 0.0;
-            ApplyBlur(s.Blur);
-            chkRound.IsChecked = s.Round;
-            chkAnim.IsChecked = s.Anim;
-            chkBlur.IsChecked = s.Blur;
-            cmbFont.Text = s.FontFamily;
-            cmbFontSize.Text = s.FontSize.ToString();
+            ApplyDwmBlur(this, s.Blur);
         }
 
-        private void ApplyBlur(bool on)
+        private void ApplyDwmBlur(Window w, bool on)
         {
-            var bb = new Native.DWM_BLURBEHIND
+            try
             {
-                dwFlags = 0x1 /*DWM_BB_ENABLE*/,
-                fEnable = on,
-                hRgnBlur = IntPtr.Zero,
-                fTransitionOnMaximized = false
-            };
-            try { Native.DwmEnableBlurBehindWindow(new System.Windows.Interop.WindowInteropHelper(this).Handle, ref bb); }
+                var bb = new Native.DWM_BLURBEHIND
+                {
+                    dwFlags = 0x1 /*DWM_BB_ENABLE*/,
+                    fEnable = on,
+                    hRgnBlur = IntPtr.Zero,
+                    fTransitionOnMaximized = false
+                };
+                Native.DwmEnableBlurBehindWindow(new System.Windows.Interop.WindowInteropHelper(w).Handle, ref bb);
+            }
             catch { }
         }
 
-        // ---------------- 设置飞出面板（左上角）----------------
-        private void BtnSettings_Click(object s, RoutedEventArgs e) => OpenSettings();
-        private void BtnSettingsClose_Click(object s, RoutedEventArgs e) => CloseSettings();
-        private void SettingsBackdrop_Click(object s, RoutedEventArgs e) => CloseSettings();
-
-        private void OpenSettings()
-        {
-            settingsBackdrop.Visibility = Visibility.Visible;
-            settingsPanel.Visibility = Visibility.Visible;
-            if (App.Settings.Anim)
-            {
-                var a = new DoubleAnimation(280, TimeSpan.FromMilliseconds(200))
-                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                settingsPanel.BeginAnimation(FrameworkElement.WidthProperty, a);
-            }
-            else
-            {
-                settingsPanel.Width = 280;
-            }
-        }
-
-        private void CloseSettings()
-        {
-            if (App.Settings.Anim)
-            {
-                var a = new DoubleAnimation(0, TimeSpan.FromMilliseconds(180));
-                a.Completed += (_, __) =>
-                {
-                    settingsPanel.Visibility = Visibility.Collapsed;
-                    settingsBackdrop.Visibility = Visibility.Collapsed;
-                };
-                settingsPanel.BeginAnimation(FrameworkElement.WidthProperty, a);
-            }
-            else
-            {
-                settingsPanel.Width = 0;
-                settingsPanel.Visibility = Visibility.Collapsed;
-                settingsBackdrop.Visibility = Visibility.Collapsed;
-            }
-        }
-
-        // ---------------- 回调 ----------------
+        // ---------------- 回调（统一转发到 LogHub） ----------------
         private void LogCallbackImpl(int level, IntPtr msg, IntPtr user)
         {
-            string text = Native.PtrToUtf8(msg);
-            Dispatcher.Invoke(() => Log(level, text));
+            LogHub.Add(level, Native.PtrToUtf8(msg));
         }
 
         private void ProgressCallbackImpl(int percent, IntPtr stage, IntPtr user)
         {
-            string text = Native.PtrToUtf8(stage);
-            Dispatcher.Invoke(() =>
-            {
-                pbProgress.Value = Math.Max(0, Math.Min(100, percent));
-                if (!string.IsNullOrEmpty(text)) txtStatus.Text = text;
-            });
+            LogHub.SetProgress(percent, Native.PtrToUtf8(stage));
         }
 
         private int GameCallbackImpl(IntPtr name, IntPtr path, IntPtr note, IntPtr user)
@@ -171,32 +119,26 @@ namespace RenPyPatcherGui
             return 0;
         }
 
-        private void Log(int level, string msg)
+        // ---------------- 二级窗口入口 ----------------
+        private void BtnSettings_Click(object s, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(msg)) return;
-            lstLog.Items.Add(msg);
-            if (lstLog.Items.Count > 500) lstLog.Items.RemoveAt(0);
-            lstLog.ScrollIntoView(lstLog.Items[lstLog.Items.Count - 1]);
+            var w = new SettingsWindow { Owner = this };
+            w.Show();
         }
 
-        // ---------------- 后台执行封装 ----------------
-        private async void RunOp(string name, Func<int> work)
+        private void BtnLog_Click(object s, RoutedEventArgs e)
         {
-            if (_busy) { Log(2, "上一项任务进行中，请稍候"); return; }
-            _busy = true;
-            txtStatus.Text = name + " 进行中…";
-            pbProgress.Value = 0;
-            int rc = RP_ERR_UNKNOWN;
-            await Task.Run(() => { rc = work(); });
-            if (rc == 0)
-                Log(1, name + "：完成 ✅");
+            if (_logWin == null || !_logWin.IsLoaded)
+            {
+                _logWin = new LogWindow { Owner = this };
+                _logWin.Closed += (_, __) => _logWin = null;
+                _logWin.Show();
+            }
             else
-                Log(3, name + "：失败 ❌ " + Native.PtrToUtf8(Native.rp_error_message()));
-            txtStatus.Text = name + (rc == 0 ? " 完成" : " 失败");
-            pbProgress.Value = 100;
-            _busy = false;
+            {
+                _logWin.Activate();
+            }
         }
-        private const int RP_ERR_UNKNOWN = -1;
 
         // ---------------- 游戏别名 ----------------
         private void RefreshGames()
@@ -218,9 +160,9 @@ namespace RenPyPatcherGui
         {
             var name = txtAliasName.Text.Trim();
             var path = txtAliasPath.Text.Trim();
-            if (name.Length == 0 || path.Length == 0) { Log(2, "名称与路径均必填"); return; }
+            if (name.Length == 0 || path.Length == 0) { LogHub.Add(2, "名称与路径均必填"); return; }
             int rc = Native.rp_game_add(name, path, txtAliasNote.Text.Trim());
-            Log(rc == 0 ? 1 : 3, rc == 0 ? $"已登记：{name}" : "登记失败");
+            LogHub.Add(rc == 0 ? 1 : 3, rc == 0 ? $"已登记：{name}" : "登记失败");
             RefreshGames();
         }
 
@@ -229,14 +171,13 @@ namespace RenPyPatcherGui
             var sel = lstGames.SelectedItem as GameEntry;
             if (sel == null) return;
             int rc = Native.rp_game_remove(sel.Name);
-            Log(rc == 0 ? 1 : 3, rc == 0 ? $"已删除：{sel.Name}" : "删除失败");
+            LogHub.Add(rc == 0 ? 1 : 3, rc == 0 ? $"已删除：{sel.Name}" : "删除失败");
             RefreshGames();
         }
 
         // ---------------- 右下角浮动「添加游戏」：点击后展开内联表单并滚到顶部 ----------------
         private void BtnAddFab_Click(object s, RoutedEventArgs e)
         {
-            // 重新显示内联表单的添加/删除按钮，方便填写；填写完点「添加 / 更新」即再次收起
             btnAliasAdd.Visibility = Visibility.Visible;
             btnAliasRemove.Visibility = Visibility.Visible;
             pageGame.ScrollToTop();
@@ -251,10 +192,10 @@ namespace RenPyPatcherGui
             string zip = d.FileName;
             string name = txtImportName.Text.Trim();
             if (name.Length == 0) name = System.IO.Path.GetFileNameWithoutExtension(zip);
-            if (name.Length == 0) { Log(2, "无法取得游戏名"); return; }
+            if (name.Length == 0) { LogHub.Add(2, "无法取得游戏名"); return; }
             string dest = System.IO.Path.Combine(_gameDir, name);
             string captured = name;
-            RunOp("从压缩包导入", () =>
+            Ops.Run("从压缩包导入", () =>
             {
                 System.IO.Directory.CreateDirectory(dest);
                 ZipFile.ExtractToDirectory(zip, dest, true);
@@ -284,9 +225,9 @@ namespace RenPyPatcherGui
             {
                 // 拖入文件夹：登记为外部路径游戏（不复制进 game/）
                 string name = System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar));
-                if (name.Length == 0) { Log(2, "无法取得文件夹名"); return; }
+                if (name.Length == 0) { LogHub.Add(2, "无法取得文件夹名"); return; }
                 string captured = name, dir = path;
-                RunOp("拖入文件夹（添加游戏）", () => Native.rp_game_add(captured, dir, "拖入文件夹"));
+                Ops.Run("拖入文件夹（添加游戏）", () => Native.rp_game_add(captured, dir, "拖入文件夹"));
             }
             else if (File.Exists(path) && string.Equals(System.IO.Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
             {
@@ -294,7 +235,7 @@ namespace RenPyPatcherGui
                 string name = System.IO.Path.GetFileNameWithoutExtension(path);
                 string dest = System.IO.Path.Combine(_gameDir, name);
                 string captured = name, src = path;
-                RunOp("拖入压缩包（导入）", () =>
+                Ops.Run("拖入压缩包（导入）", () =>
                 {
                     System.IO.Directory.CreateDirectory(dest);
                     ZipFile.ExtractToDirectory(src, dest, true);
@@ -303,27 +244,20 @@ namespace RenPyPatcherGui
             }
             else
             {
-                Log(2, "不支持的拖入类型：" + path);
+                LogHub.Add(2, "不支持的拖入类型：" + path);
             }
         }
 
-        // ---------------- 列表项：管理 / 启动 ----------------
+        // ---------------- 列表项：管理（打开二级操作窗口）/ 启动 ----------------
         private void BtnGameManage_Click(object s, RoutedEventArgs e)
         {
             var name = (s as Button)?.Tag as string;
             if (string.IsNullOrEmpty(name)) return;
             string path = Native.PtrToUtf8(Native.rp_game_resolve(name));
-            // token 类字段填名称，目录类字段填路径，方便直接执行下方功能
-            txtUnpackGame.Text = name;
-            txtCreditGame.Text = name;
-            txtTrDir.Text = path;
-            txtBranchDir.Text = path;
-            txtExportDir.Text = path;
-            txtModTarget.Text = path;
-            // 同时回填别名框，便于修改
-            txtAliasName.Text = name;
-            txtAliasPath.Text = path;
-            Log(1, $"已为「{name}」填入操作参数，可直接执行下方功能");
+            if (string.IsNullOrEmpty(path)) { LogHub.Add(2, "找不到游戏路径：" + name); return; }
+            var w = new GameOpsWindow(name, path) { Owner = this };
+            w.Show();
+            LogHub.Add(1, $"已打开「{name}」的操作窗口");
         }
 
         private void BtnGameLaunch_Click(object s, RoutedEventArgs e)
@@ -331,23 +265,23 @@ namespace RenPyPatcherGui
             var name = (s as Button)?.Tag as string;
             if (string.IsNullOrEmpty(name)) return;
             string raw = Native.PtrToUtf8(Native.rp_game_resolve(name));
-            if (string.IsNullOrEmpty(raw)) { Log(2, "找不到游戏路径"); return; }
+            if (string.IsNullOrEmpty(raw)) { LogHub.Add(2, "找不到游戏路径"); return; }
             try
             {
                 if (Directory.Exists(raw))
                 {
                     var exe = Directory.GetFiles(raw, "*.exe", SearchOption.TopDirectoryOnly)
                         .FirstOrDefault(x => !Path.GetFileName(x).ToLower().Contains("uninstall"));
-                    if (exe != null) { Process.Start(exe); Log(1, "启动：" + exe); }
-                    else { Process.Start("explorer.exe", raw); Log(1, "未找到 exe，已打开目录"); }
+                    if (exe != null) { Process.Start(exe); LogHub.Add(1, "启动：" + exe); }
+                    else { Process.Start("explorer.exe", raw); LogHub.Add(1, "未找到 exe，已打开目录"); }
                 }
                 else if (File.Exists(raw))
                 {
-                    Process.Start(raw); Log(1, "启动：" + raw);
+                    Process.Start(raw); LogHub.Add(1, "启动：" + raw);
                 }
-                else { Log(2, "路径不存在：" + raw); }
+                else { LogHub.Add(2, "路径不存在：" + raw); }
             }
-            catch (Exception ex) { Log(3, "启动失败：" + ex.Message); }
+            catch (Exception ex) { LogHub.Add(3, "启动失败：" + ex.Message); }
         }
 
         // ---------------- 文件/文件夹选择 ----------------
@@ -356,108 +290,6 @@ namespace RenPyPatcherGui
             var d = new System.Windows.Forms.FolderBrowserDialog { Description = "选择文件夹" };
             if (d.ShowDialog() == System.Windows.Forms.DialogResult.OK) tb.Text = d.SelectedPath;
         }
-        private void PickFile(TextBox tb, string filter)
-        {
-            var d = new OpenFileDialog { Filter = filter, CheckFileExists = false };
-            if (d.ShowDialog() == true) tb.Text = d.FileName;
-        }
-
         private void BtnBrowseAlias_Click(object s, RoutedEventArgs e) => PickFolder(txtAliasPath);
-        private void BtnBrowseUnpackOut_Click(object s, RoutedEventArgs e) => PickFolder(txtUnpackOut);
-        private void BtnBrowseModDir_Click(object s, RoutedEventArgs e) => PickFolder(txtModDir);
-        private void BtnBrowseExportDir_Click(object s, RoutedEventArgs e) => PickFolder(txtExportDir);
-        private void BtnBrowseBranchDir_Click(object s, RoutedEventArgs e) => PickFolder(txtBranchDir);
-        private void BtnBrowseTrDir_Click(object s, RoutedEventArgs e) => PickFolder(txtTrDir);
-
-        // ---------------- 资源操作 ----------------
-        private void BtnUnpack_Click(object s, RoutedEventArgs e) =>
-            RunOp("解包", () => Native.rp_unpack(txtUnpackGame.Text.Trim(), txtUnpackOut.Text.Trim()));
-
-        private void BtnBuild_Click(object s, RoutedEventArgs e) =>
-            RunOp("重打包", () => Native.rp_build(txtBuildDir.Text.Trim(), txtBuildDir.Text.Trim() + ".rpa"));
-
-        private void BtnMod_Click(object s, RoutedEventArgs e) =>
-            RunOp("注入 Mod", () => Native.rp_mod(txtModTarget.Text.Trim(), txtModDir.Text.Trim()));
-
-        private void BtnCredit_Click(object s, RoutedEventArgs e) =>
-            RunOp("来源声明", () => Native.rp_credit_add(txtCreditGame.Text.Trim(), txtCreditOut.Text.Trim(), txtCreditName.Text.Trim()));
-
-        private void BtnExport_Click(object s, RoutedEventArgs e)
-        {
-            int split = 0;
-            int.TryParse(txtSplitMb.Text.Trim(), out split);
-            RunOp("导出 zip", () => Native.rp_export(txtExportDir.Text.Trim(), txtExportOut.Text.Trim(), split));
-        }
-
-        private void BtnExportApk_Click(object s, RoutedEventArgs e) =>
-            RunOp("导出 APK", () => Native.rp_export_apk(txtExportDir.Text.Trim(), txtApkMod.Text.Trim(), txtExportOut.Text.Trim() + ".apk", 1));
-
-        private void BtnBranch_Click(object s, RoutedEventArgs e)
-        {
-            var fmt = (cmbBranchFmt.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "mermaid";
-            RunOp("分支导图", () => Native.rp_branch(txtBranchDir.Text.Trim(), txtBranchOut.Text.Trim(), fmt));
-        }
-
-        // ---------------- 翻译 ----------------
-        private void BtnTrExtract_Click(object s, RoutedEventArgs e) =>
-            RunOp("抽取对话", () => Native.rp_translate_extract(txtTrDir.Text.Trim(), txtTrJson.Text.Trim()));
-
-        private void BtnTrAi_Click(object s, RoutedEventArgs e)
-        {
-            var src = txtTrSrc.Text.Trim();
-            var dst = txtTrOut.Text.Trim();
-            if (src.Length == 0 || dst.Length == 0) { Log(2, "源/输出 JSON 必填"); return; }
-            if (txtTrKey.Password.Length == 0) { Log(2, "API Key 必填"); return; }
-            RunOp("AI 翻译", () => Native.rp_translate_ai(
-                src, dst,
-                txtTrFrom.Text.Trim(), txtTrTo.Text.Trim(),
-                txtTrBase.Text.Trim(), txtTrKey.Password, txtTrModel.Text.Trim()));
-        }
-
-        private void BtnTrBuild_Click(object s, RoutedEventArgs e) =>
-            RunOp("回写 Mod", () => Native.rp_translate_build(txtTrBuildJson.Text.Trim(), txtTrBuildOut.Text.Trim(), txtTrLang.Text.Trim()));
-
-        // ---------------- 设置 ----------------
-        private void ChkRound_Changed(object s, RoutedEventArgs e)
-        {
-            App.Settings.Round = chkRound.IsChecked == true;
-            App.Current.Resources["CornerRadius"] = App.Settings.Round ? 8.0 : 0.0;
-            App.Settings.Save();
-        }
-        private void ChkAnim_Changed(object s, RoutedEventArgs e)
-        {
-            App.Settings.Anim = chkAnim.IsChecked == true;
-            App.Settings.Save();
-        }
-        private void ChkBlur_Changed(object s, RoutedEventArgs e)
-        {
-            App.Settings.Blur = chkBlur.IsChecked == true;
-            ApplyBlur(App.Settings.Blur);
-            App.Settings.Save();
-        }
-        private void CmbFont_Changed(object s, SelectionChangedEventArgs e)
-        {
-            if (cmbFont.SelectedItem == null) return;
-            App.Settings.FontFamily = (cmbFont.SelectedItem as ComboBoxItem).Content.ToString();
-            FontFamily = new FontFamily(App.Settings.FontFamily);
-            App.Settings.Save();
-        }
-        private void CmbFontSize_Changed(object s, SelectionChangedEventArgs e)
-        {
-            if (cmbFontSize.SelectedItem == null) return;
-            double v;
-            if (double.TryParse((cmbFontSize.SelectedItem as ComboBoxItem).Content.ToString(), out v))
-            {
-                App.Settings.FontSize = v;
-                FontSize = v;
-                App.Settings.Save();
-            }
-        }
-        private void BtnResetUi_Click(object s, RoutedEventArgs e)
-        {
-            App.Settings = new UiSettings(); App.Settings.Save();
-            ApplySettings();
-            Log(1, "界面设置已恢复默认");
-        }
     }
 }
