@@ -5,7 +5,7 @@ namespace RenPyPatcherGui
 {
     public partial class App : Application
     {
-        public static UiSettings Settings { get; private set; }
+        public static UiSettings Settings { get; set; }
 
         protected override void OnStartup(StartupEventArgs e)
         {
