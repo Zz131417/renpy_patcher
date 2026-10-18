@@ -49,7 +49,9 @@ jobs:
         run: cmake --build build --config Release --target patcher patcher_core
 
       - name: Publish WPF GUI (self-contained)
-        run: dotnet publish gui_wpf/gui_wpf.csproj -c Release -r win-x64 --self-contained true -o gui_publish
+        shell: bash
+        working-directory: gui_wpf
+        run: dotnet publish -c Release -r win-x64 --self-contained true -o ../gui_publish
 
       - name: Bundle native DLL + CLI
         shell: cmd
