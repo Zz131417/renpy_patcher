@@ -6,7 +6,8 @@ using System.Text.Json.Serialization;
 namespace RenPyPatcherGui
 {
     /// <summary>
-    /// UI 设置（界面外观，持久化到本地 gui.json）。与核心解包无关，纯前端偏好。
+    /// UI 设置（界面外观，持久化到本机 settings/gui.json，与核心解包无关，纯前端偏好）。
+    /// 首次启动时由 MainWindow 确保 settings/ 目录存在（位于可执行文件目录下，便于便携）。
     /// </summary>
     public class UiSettings
     {
@@ -18,8 +19,7 @@ namespace RenPyPatcherGui
 
         private static readonly string Path =
             System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "RenPyPatcher", "gui.json");
+                AppContext.BaseDirectory, "settings", "gui.json");
 
         public static UiSettings Load()
         {

@@ -1,5 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,6 +14,14 @@ using Microsoft.Win32;
 
 namespace RenPyPatcherGui
 {
+    // 已登记游戏的数据项（绑定到列表）
+    public class GameEntry
+    {
+        public string Name { get; set; }
+        public string Path { get; set; }
+        public string Note { get; set; }
+    }
+
     public partial class MainWindow : Window
     {
         // 保存委托引用，防止被 GC 回收
@@ -16,18 +29,36 @@ namespace RenPyPatcherGui
         private Native.ProgressCallback _progCb;
         private Native.GameCallback _gameCb;
         private bool _busy = false;
-        private int _currentPage = 0;
+
+        // 游戏列表数据源
+        private ObservableCollection<GameEntry> _games = new ObservableCollection<GameEntry>();
+        private List<GameEntry> _pendingGames = new List<GameEntry>();
+
+        // 数据目录（位于可执行文件目录下，便于便携）：game/ 存游戏，settings/ 存登记表与界面设置
+        private string _baseDir, _gameDir, _settingsDir;
 
         public MainWindow()
         {
             InitializeComponent();
+            lstGames.ItemsSource = _games;
             Loaded += MainWindow_Loaded;
+        }
+
+        private void EnsureDataDirs()
+        {
+            _baseDir = AppContext.BaseDirectory;
+            _gameDir = System.IO.Path.Combine(_baseDir, "game");
+            _settingsDir = System.IO.Path.Combine(_baseDir, "settings");
+            // 首次启动（或目录被删）时新建 game/ 与 settings/
+            System.IO.Directory.CreateDirectory(_gameDir);
+            System.IO.Directory.CreateDirectory(_settingsDir);
         }
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             // 初始化核心 + 回调
-            Native.rp_game_init(null);
+            EnsureDataDirs();
+            Native.rp_game_init(System.IO.Path.Combine(_settingsDir, "games.txt"));
             _logCb = LogCallbackImpl;
             _progCb = ProgressCallbackImpl;
             Native.rp_set_log_callback(_logCb, IntPtr.Zero);
@@ -40,7 +71,6 @@ namespace RenPyPatcherGui
 
             ApplySettings();
             RefreshGames();
-            SwitchPage(0, false);
             Log(1, "GUI 已就绪");
         }
 
@@ -72,35 +102,44 @@ namespace RenPyPatcherGui
             catch { }
         }
 
-        // ---------------- 导航 ----------------
-        private void BtnNavGame_Click(object s, RoutedEventArgs e) => SwitchPage(0);
-        private void BtnNavHome_Click(object s, RoutedEventArgs e) => SwitchPage(1);
-        private void BtnNavSettings_Click(object s, RoutedEventArgs e) => SwitchPage(2);
+        // ---------------- 设置飞出面板（左上角）----------------
+        private void BtnSettings_Click(object s, RoutedEventArgs e) => OpenSettings();
+        private void BtnSettingsClose_Click(object s, RoutedEventArgs e) => CloseSettings();
+        private void SettingsBackdrop_Click(object s, RoutedEventArgs e) => CloseSettings();
 
-        private void SwitchPage(int idx, bool animate = true)
+        private void OpenSettings()
         {
-            _currentPage = idx;
-            pageGame.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
-            pageHome.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
-            pageSettings.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
-
-            btnNavGame.FontWeight = idx == 0 ? FontWeights.Bold : FontWeights.SemiBold;
-            btnNavHome.FontWeight = idx == 1 ? FontWeights.Bold : FontWeights.SemiBold;
-            btnNavSettings.FontWeight = idx == 2 ? FontWeights.Bold : FontWeights.SemiBold;
-            btnNavGame.Foreground = idx == 0 ? new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)) : new SolidColorBrush(Color.FromRgb(0x33, 0x41, 0x55));
-            btnNavHome.Foreground = idx == 1 ? new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)) : new SolidColorBrush(Color.FromRgb(0x33, 0x41, 0x55));
-            btnNavSettings.Foreground = idx == 2 ? new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)) : new SolidColorBrush(Color.FromRgb(0x33, 0x41, 0x55));
-
-            if (animate && App.Settings.Anim)
+            settingsBackdrop.Visibility = Visibility.Visible;
+            settingsPanel.Visibility = Visibility.Visible;
+            if (App.Settings.Anim)
             {
-                PageTx.Y = 14;
-                var anim = new DoubleAnimation(0, TimeSpan.FromMilliseconds(220))
+                var a = new DoubleAnimation(280, TimeSpan.FromMilliseconds(200))
                 { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                PageTx.BeginAnimation(TranslateTransform.YProperty, anim);
+                settingsPanel.BeginAnimation(FrameworkElement.WidthProperty, a);
             }
             else
             {
-                PageTx.Y = 0;
+                settingsPanel.Width = 280;
+            }
+        }
+
+        private void CloseSettings()
+        {
+            if (App.Settings.Anim)
+            {
+                var a = new DoubleAnimation(0, TimeSpan.FromMilliseconds(180));
+                a.Completed += (_, __) =>
+                {
+                    settingsPanel.Visibility = Visibility.Collapsed;
+                    settingsBackdrop.Visibility = Visibility.Collapsed;
+                };
+                settingsPanel.BeginAnimation(FrameworkElement.WidthProperty, a);
+            }
+            else
+            {
+                settingsPanel.Width = 0;
+                settingsPanel.Visibility = Visibility.Collapsed;
+                settingsBackdrop.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -123,11 +162,14 @@ namespace RenPyPatcherGui
 
         private int GameCallbackImpl(IntPtr name, IntPtr path, IntPtr note, IntPtr user)
         {
-            // 在后台线程调用，收集到列表后统一回 UI 线程刷新
-            _pendingGames.Add($"{Native.PtrToUtf8(name)}  |  {Native.PtrToUtf8(path)}  |  {Native.PtrToUtf8(note)}");
+            _pendingGames.Add(new GameEntry
+            {
+                Name = Native.PtrToUtf8(name),
+                Path = Native.PtrToUtf8(path),
+                Note = Native.PtrToUtf8(note)
+            });
             return 0;
         }
-        private List<string> _pendingGames = new List<string>();
 
         private void Log(int level, string msg)
         {
@@ -142,7 +184,7 @@ namespace RenPyPatcherGui
         {
             if (_busy) { Log(2, "上一项任务进行中，请稍候"); return; }
             _busy = true;
-                        txtStatus.Text = name + " 进行中…";
+            txtStatus.Text = name + " 进行中…";
             pbProgress.Value = 0;
             int rc = RP_ERR_UNKNOWN;
             await Task.Run(() => { rc = work(); });
@@ -161,8 +203,15 @@ namespace RenPyPatcherGui
         {
             _pendingGames.Clear();
             Native.rp_game_list(_gameCb, IntPtr.Zero);
-            lstGames.Items.Clear();
-            foreach (var g in _pendingGames) lstGames.Items.Add(g);
+            _games.Clear();
+            foreach (var g in _pendingGames) _games.Add(g);
+            bool hasGames = _games.Count > 0;
+            // 空状态：未登记任何游戏时提示「请导入游戏」
+            emptyState.Visibility = hasGames ? Visibility.Collapsed : Visibility.Visible;
+            // 首次添加后：内联的「添加/更新」「删除选中」移到右下角浮动按钮
+            btnAliasAdd.Visibility = hasGames ? Visibility.Collapsed : Visibility.Visible;
+            btnAliasRemove.Visibility = hasGames ? Visibility.Collapsed : Visibility.Visible;
+            btnAddFab.Visibility = hasGames ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void BtnAliasAdd_Click(object s, RoutedEventArgs e)
@@ -177,12 +226,128 @@ namespace RenPyPatcherGui
 
         private void BtnAliasRemove_Click(object s, RoutedEventArgs e)
         {
-            if (lstGames.SelectedItem == null) return;
-            var line = lstGames.SelectedItem.ToString();
-            var name = line.Split('|')[0].Trim();
-            int rc = Native.rp_game_remove(name);
-            Log(rc == 0 ? 1 : 3, rc == 0 ? $"已删除：{name}" : "删除失败");
+            var sel = lstGames.SelectedItem as GameEntry;
+            if (sel == null) return;
+            int rc = Native.rp_game_remove(sel.Name);
+            Log(rc == 0 ? 1 : 3, rc == 0 ? $"已删除：{sel.Name}" : "删除失败");
             RefreshGames();
+        }
+
+        // ---------------- 右下角浮动「添加游戏」：点击后展开内联表单并滚到顶部 ----------------
+        private void BtnAddFab_Click(object s, RoutedEventArgs e)
+        {
+            // 重新显示内联表单的添加/删除按钮，方便填写；填写完点「添加 / 更新」即再次收起
+            btnAliasAdd.Visibility = Visibility.Visible;
+            btnAliasRemove.Visibility = Visibility.Visible;
+            pageGame.ScrollToTop();
+            txtAliasName.Focus();
+        }
+
+        // ---------------- 从压缩包导入：解压进 game/<名称>/ 并登记（仅此类游戏进入 game/） ----------------
+        private void BtnImportZip_Click(object s, RoutedEventArgs e)
+        {
+            var d = new OpenFileDialog { Filter = "压缩包 (*.zip)|*.zip", CheckFileExists = true };
+            if (d.ShowDialog() != true) return;
+            string zip = d.FileName;
+            string name = txtImportName.Text.Trim();
+            if (name.Length == 0) name = System.IO.Path.GetFileNameWithoutExtension(zip);
+            if (name.Length == 0) { Log(2, "无法取得游戏名"); return; }
+            string dest = System.IO.Path.Combine(_gameDir, name);
+            string captured = name;
+            RunOp("从压缩包导入", () =>
+            {
+                System.IO.Directory.CreateDirectory(dest);
+                ZipFile.ExtractToDirectory(zip, dest, true);
+                return Native.rp_game_add(captured, dest, "从压缩包导入");
+            });
+            txtImportName.Clear();
+        }
+
+        // ---------------- 拖动导入 ----------------
+        private void MainWindow_DragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void MainWindow_Drop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            e.Handled = true;
+            var items = (string[])e.Data.GetData(DataFormats.FileDrop);
+            foreach (var it in items) HandleDropItem(it);
+        }
+
+        private void HandleDropItem(string path)
+        {
+            if (Directory.Exists(path))
+            {
+                // 拖入文件夹：登记为外部路径游戏（不复制进 game/）
+                string name = System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar));
+                if (name.Length == 0) { Log(2, "无法取得文件夹名"); return; }
+                string captured = name, dir = path;
+                RunOp("拖入文件夹（添加游戏）", () => Native.rp_game_add(captured, dir, "拖入文件夹"));
+            }
+            else if (File.Exists(path) && string.Equals(System.IO.Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                // 拖入 zip：解压进 game/<名称>/
+                string name = System.IO.Path.GetFileNameWithoutExtension(path);
+                string dest = System.IO.Path.Combine(_gameDir, name);
+                string captured = name, src = path;
+                RunOp("拖入压缩包（导入）", () =>
+                {
+                    System.IO.Directory.CreateDirectory(dest);
+                    ZipFile.ExtractToDirectory(src, dest, true);
+                    return Native.rp_game_add(captured, dest, "拖入压缩包导入");
+                });
+            }
+            else
+            {
+                Log(2, "不支持的拖入类型：" + path);
+            }
+        }
+
+        // ---------------- 列表项：管理 / 启动 ----------------
+        private void BtnGameManage_Click(object s, RoutedEventArgs e)
+        {
+            var name = (s as Button)?.Tag as string;
+            if (string.IsNullOrEmpty(name)) return;
+            string path = Native.PtrToUtf8(Native.rp_game_resolve(name));
+            // token 类字段填名称，目录类字段填路径，方便直接执行下方功能
+            txtUnpackGame.Text = name;
+            txtCreditGame.Text = name;
+            txtTrDir.Text = path;
+            txtBranchDir.Text = path;
+            txtExportDir.Text = path;
+            txtModTarget.Text = path;
+            // 同时回填别名框，便于修改
+            txtAliasName.Text = name;
+            txtAliasPath.Text = path;
+            Log(1, $"已为「{name}」填入操作参数，可直接执行下方功能");
+        }
+
+        private void BtnGameLaunch_Click(object s, RoutedEventArgs e)
+        {
+            var name = (s as Button)?.Tag as string;
+            if (string.IsNullOrEmpty(name)) return;
+            string raw = Native.PtrToUtf8(Native.rp_game_resolve(name));
+            if (string.IsNullOrEmpty(raw)) { Log(2, "找不到游戏路径"); return; }
+            try
+            {
+                if (Directory.Exists(raw))
+                {
+                    var exe = Directory.GetFiles(raw, "*.exe", SearchOption.TopDirectoryOnly)
+                        .FirstOrDefault(x => !Path.GetFileName(x).ToLower().Contains("uninstall"));
+                    if (exe != null) { Process.Start(exe); Log(1, "启动：" + exe); }
+                    else { Process.Start("explorer.exe", raw); Log(1, "未找到 exe，已打开目录"); }
+                }
+                else if (File.Exists(raw))
+                {
+                    Process.Start(raw); Log(1, "启动：" + raw);
+                }
+                else { Log(2, "路径不存在：" + raw); }
+            }
+            catch (Exception ex) { Log(3, "启动失败：" + ex.Message); }
         }
 
         // ---------------- 文件/文件夹选择 ----------------
