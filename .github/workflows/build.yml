@@ -95,7 +95,7 @@ jobs:
       - name: Draft Release
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
-          VER=$(cat VERSION); BUILD=${{ github.run_number }}
+          VER=$(jq -r .version version.json); BUILD=$(jq -r .build version.json)
           TAG="v${VER}-beta${BUILD}"
           ls -la
           gh release create "$TAG" --draft --title "$TAG (测试版)" \
