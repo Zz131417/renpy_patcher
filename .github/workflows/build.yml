@@ -91,16 +91,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          VER=$(cat VERSION | tr -d '[:space:]')
+          export VER=$(cat VERSION | tr -d '[:space:]')
           # 当前主版本下已有最大 beta 字母（A-Z）；无则 A。发正式版后若 bump 版本，新版本自然从 A 重算。
           LAST=$(gh api "repos/${{ github.repository }}/releases?per_page=100" \
             -q ".[] | select(.tag_name | test(\"^v${VER}-beta[A-Za-z]+$\")) | .tag_name" \
             | sed "s/^v${VER}-beta//" | sort | tail -1)
           if [ -z "$LAST" ]; then NEXT="A"; else NEXT=$(printf "%c" $(( $(printf "%d" "'$LAST") + 1 ))); fi
-          TAG="v${VER}-beta${NEXT}"
-          BUILD="${{ github.run_number }}"
-          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          export TAG="v${VER}-beta${NEXT}"
+          export BUILD="${{ github.run_number }}"
+          export DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          export URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           # 生成 version.json（与 latest 分支既有格式一致）
           python3 - <<PY
           import os,json
