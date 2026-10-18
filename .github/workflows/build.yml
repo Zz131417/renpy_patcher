@@ -109,7 +109,7 @@ jobs:
           PY
           export TAG=$(cat /tmp/next_tag.txt)
           export URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
-          echo "下一个测试版标签: $TAG"
+          echo "下一个预发布标签: $TAG"
           # 生成 version.json（与 latest 分支既有格式一致）
           python3 - <<'PY'
           import os,json
@@ -119,8 +119,8 @@ jobs:
           print("version.json:\n"+open("version.json").read())
           PY
           ls -la
-          gh release create "$TAG" --draft --title "$TAG (测试版)" \
-            --notes "Ren'Py Patcher 测试版（含 GUI）。GUI 基于 WPF，通过 patcher_core.dll 调用核心库；CLI 二进制 patcher / patcher.exe 仍可用。解包/重打包/注入/来源声明/导出zip/导出APK/分支导图/翻译流水线。" \
+          gh release create "$TAG" --prerelease --title "$TAG (预发布)" \
+            --notes "Ren'Py Patcher 预发布版（含 GUI）。GUI 基于 WPF，通过 patcher_core.dll 调用核心库；CLI 二进制 patcher / patcher.exe 仍可用。解包/重打包/注入/来源声明/导出zip/导出APK/分支导图/翻译流水线。" \
             patcher_gui_win64.zip patcher_cli_win64.zip patcher_cli_linux64.zip version.json
           # 更新 latest 分支的 version.json（供 GUI 检查更新）
           python3 - <<'PY'
