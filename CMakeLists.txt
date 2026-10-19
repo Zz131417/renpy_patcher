@@ -127,6 +127,23 @@ if(WIN32)
             $<TARGET_FILE:patcher_core> $<TARGET_FILE_DIR:patcher>)
 endif()
 # ==========================================================================
+endif()
+
+# ==========================================================================
+# ===================== 核心 API 端到端测试 =====================
+# 只用 core_api.h 导出的高层 API（GUI P/Invoke 实际调用的函数）。
+# Windows：链接 patcher_core.dll（GUI 真正用的内核）；Linux：链接 renpy_core 静态库。
+# 跑 ctest 即可执行；CI 的 linux-cli / windows-gui job 都会调用。
+enable_testing()
+add_executable(test_core_api tests/test_core_api.c)
+target_include_directories(test_core_api PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(WIN32)
+    target_link_libraries(test_core_api PRIVATE patcher_core)
+else()
+    target_link_libraries(test_core_api PRIVATE renpy_core)
+endif()
+add_test(NAME core_api COMMAND test_core_api)
+# ==========================================================================
 
 # 热注入 agent（仅 Windows）：被注入游戏进程的 DLL 载荷。
 # 依赖 Python 开发包（运行时定位 CPython）；若环境无 Python 开发包则跳过，

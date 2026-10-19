@@ -21,9 +21,11 @@ jobs:
       - name: Build
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
-          cmake --build build --config Release --target patcher
+          cmake --build build --config Release
       - name: Smoke
         run: ./build/patcher --help || true
+      - name: Test (核心 API 端到端)
+        run: cd build && ctest --output-on-failure
       - name: Package CLI
         run: |
           mkdir -p cli_linux && cp build/patcher cli_linux/
@@ -45,8 +47,11 @@ jobs:
       - name: Configure (x64)
         run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
 
-      - name: Build core DLL + CLI
-        run: cmake --build build --config Release --target patcher patcher_core
+      - name: Build core DLL + CLI + tests
+        run: cmake --build build --config Release --target patcher patcher_core test_core_api
+
+      - name: Test (patcher_core.dll 端到端)
+        run: cd build && ctest --output-on-failure -C Release
 
       - name: Publish WPF GUI (self-contained)
         shell: bash
