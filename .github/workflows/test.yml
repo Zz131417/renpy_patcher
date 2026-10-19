@@ -1,0 +1,52 @@
+name: Test
+
+# 手动触发的测试工作流：编译核心库/内核后用 ctest 跑端到端测试。
+# - Linux：编 renpy_core 静态库，跑核心 API 测试（解包/构建/合并Mod/来源声明/烘焙DLL/导出）
+# - Windows：编 patcher_core.dll（GUI 真正 P/Invoke 的内核），对其跑同一套测试
+# 注意：此工作流不发布产物，仅验证核心逻辑。
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: '运行的平台'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - linux
+          - windows
+
+permissions:
+  contents: read
+
+jobs:
+  linux-test:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' || github.event.inputs.platform == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Install zlib
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      - name: Configure
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
+      - name: Build test
+        run: cmake --build build --config Release --target test_core_api
+      - name: Test (核心 API 端到端)
+        run: cd build && ctest --output-on-failure
+
+  windows-test:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' || github.event.inputs.platform == '' }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: microsoft/setup-msbuild@v2
+      - name: Configure (x64)
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
+      - name: Build core DLL + test
+        run: cmake --build build --config Release --target patcher_core test_core_api
+      - name: Test (patcher_core.dll 端到端)
+        run: cd build && ctest --output-on-failure -C Release
