@@ -202,16 +202,42 @@ static int copy_file_raw(const char *src, const char *dst) {
     while ((r = fread(buf, 1, sizeof(buf), f)) > 0) fwrite(buf, 1, r, o);
     fclose(f); fclose(o); return RP_OK;
 }
+static void bake_mkdir(const char *dir) {
+#ifdef _WIN32
+    /* 逐级建目录（Windows _mkdir 不递归） */
+    char tmp[1024];
+    snprintf(tmp, sizeof(tmp), "%s", dir);
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '\\' || *p == '/') { char c = *p; *p = 0;
+            if (tmp[0]) _mkdir(tmp); *p = c; }
+    }
+    _mkdir(tmp);
+#else
+    char tmp[1024];
+    snprintf(tmp, sizeof(tmp), "%s", dir);
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/') { char c = *p; *p = 0;
+            if (tmp[0]) mkdir(tmp, 0755); *p = c; }
+    }
+    mkdir(tmp, 0755);
+#endif
+}
 static void bake_tmp_dir(char *buf, size_t n, const char *suffix) {
 #ifdef _WIN32
     char tp[MAX_PATH];
-    if (GetTempPathA(MAX_PATH, tp))
-        snprintf(buf, n, "%srenpy_bake_%s_%u", tp, suffix, (unsigned)GetCurrentProcessId());
-    else
+    if (GetTempPathA(MAX_PATH, tp) && tp[0]) {
+        size_t L = strlen(tp);
+        if (tp[L-1] != '\\' && tp[L-1] != '/')
+            snprintf(buf, n, "%s\\renpy_bake_%s_%u", tp, suffix, (unsigned)GetCurrentProcessId());
+        else
+            snprintf(buf, n, "%srenpy_bake_%s_%u", tp, suffix, (unsigned)GetCurrentProcessId());
+    } else {
         snprintf(buf, n, "renpy_bake_%s_%u", suffix, (unsigned)GetCurrentProcessId());
+    }
 #else
     snprintf(buf, n, "/tmp/renpy_bake_%s_%u_%ld", suffix, (unsigned)getpid(), (long)time(NULL));
 #endif
+    bake_mkdir(buf);
 }
 static void bake_remove_tree(const char *dir) {
 #ifdef _WIN32
@@ -231,7 +257,7 @@ RP_CORE_API int rp_inject_dll_bake(const char *game_rpa, const char *dll_path, c
     char tmp[1024];
     bake_tmp_dir(tmp, sizeof(tmp), "bake");
     int rc = h->unpack(game_rpa, tmp);
-    if (rc != RP_OK) { prog(100, "解包失败"); bake_remove_tree(tmp); return rc; }
+    if (rc != RP_OK) { log_error("烘焙解包失败: %s", rp_last_error()); prog(100, "解包失败"); bake_remove_tree(tmp); return rc; }
     const char *name = basename_of(dll_path);
     char dst[2048];
     snprintf(dst, sizeof(dst), "%s/%s", tmp, name);

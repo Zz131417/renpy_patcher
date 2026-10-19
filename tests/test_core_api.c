@@ -99,6 +99,7 @@ int main(void) {
     /* 5) 烘焙 DLL 进包（跨平台）：放一个占位 .dll → 解包→放入→声明→重打包 */
     write_file(testdll, "MZ\x90\x00(fake-dll-for-bake-test)");
     rc = rp_inject_dll_bake(game_rpa, testdll, baked);
+    if (rc != RP_OK) printf("    (bake 失败原因: %s)\n", rp_error_message());
     check(rc == RP_OK, "rp_inject_dll_bake (烘焙 DLL 进包)");
     check(file_exists(baked), "baked.rpa 产物存在");
     if (rc == RP_OK) {
