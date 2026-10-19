@@ -94,33 +94,47 @@ jobs:
           export VER=$(cat VERSION | tr -d '[:space:]')
           export BUILD="${{ github.run_number }}"
           export DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          # 下一个 beta 字母：查 git tags 中当前主版本最大的 beta 字母 +1；无则 A。
-          # （发正式版若 bump 主版本号，新版本下没有 betaX，自然从 A 重算。）
-          python3 - <<'PY' > /tmp/next_tag.txt
-          import os, json, re, urllib.request
-          TOKEN = os.environ["GITHUB_TOKEN"]; REPO = os.environ["GITHUB_REPOSITORY"]; VER = os.environ["VER"]
-          H = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json"}
-          tags = json.load(urllib.request.urlopen(
-              urllib.request.Request(f"https://api.github.com/repos/{REPO}/tags?per_page=200", headers=H), timeout=30))
-          letters = [m.group(1) for t in tags
-                     if (m := re.match(rf"^v{re.escape(VER)}-beta([A-Za-z]+)$", t["name"]))]
-          nxt = "A" if not letters else chr(ord(sorted(letters)[-1]) + 1)
-          print(f"v{VER}-beta{nxt}")
-          PY
-          export TAG=$(cat /tmp/next_tag.txt)
+          # 正式发布判定：仓库根存在 .release_stable 则为正式版（v主版本，非预发布）
+          if [ -f .release_stable ]; then
+            export TAG="v${VER}"
+            export PRERELEASE_FLAG=""
+            export REL_TITLE="${TAG} (正式版)"
+            export IS_PRERELEASE=false
+          else
+            # 下一个 beta 字母：查 git tags 中当前主版本最大的 beta 字母 +1；无则 A。
+            # （发正式版若 bump 主版本号，新版本下没有 betaX，自然从 A 重算。）
+            python3 - <<'PY' > /tmp/next_tag.txt
+            import os, json, re, urllib.request
+            TOKEN = os.environ["GITHUB_TOKEN"]; REPO = os.environ["GITHUB_REPOSITORY"]; VER = os.environ["VER"]
+            H = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json"}
+            tags = json.load(urllib.request.urlopen(
+                urllib.request.Request(f"https://api.github.com/repos/{REPO}/tags?per_page=200", headers=H), timeout=30))
+            letters = [m.group(1) for t in tags
+                       if (m := re.match(rf"^v{re.escape(VER)}-beta([A-Za-z]+)$", t["name"]))]
+            nxt = "A" if not letters else chr(ord(sorted(letters)[-1]) + 1)
+            print(f"v{VER}-beta{nxt}")
+            PY
+            export TAG=$(cat /tmp/next_tag.txt)
+            export PRERELEASE_FLAG="--prerelease"
+            export REL_TITLE="${TAG} (预发布)"
+            export IS_PRERELEASE=true
+          fi
           export URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
-          echo "下一个预发布标签: $TAG"
+          echo "发布标签: $TAG  (prerelease=$IS_PRERELEASE)"
           # 生成 version.json（与 latest 分支既有格式一致）
           python3 - <<'PY'
           import os,json
           body={"tag":os.environ["TAG"],"version":os.environ["VER"],"build":int(os.environ["BUILD"]),
-                "prerelease":True,"date":os.environ["DATE"],"url":os.environ["URL"]}
+                "prerelease":(os.environ["IS_PRERELEASE"]=="true"),"date":os.environ["DATE"],"url":os.environ["URL"]}
           open("version.json","w").write(json.dumps(body,ensure_ascii=False,indent=2)+"\n")
           print("version.json:\n"+open("version.json").read())
           PY
           ls -la
-          gh release create "$TAG" --prerelease --title "$TAG (预发布)" \
-            --notes "Ren'Py Patcher 预发布版（含 GUI）。GUI 基于 WPF，通过 patcher_core.dll 调用核心库；CLI 二进制 patcher / patcher.exe 仍可用。解包/重打包/注入/来源声明/导出zip/导出APK/分支导图/翻译流水线。" \
+          NOTES="Ren'Py Patcher"
+          if [ "$IS_PRERELEASE" = true ]; then NOTES="$NOTES 预发布版"; else NOTES="$NOTES 正式版"; fi
+          NOTES="$NOTES（含 GUI）。GUI 基于 WPF，通过 patcher_core.dll 调用核心库；CLI 二进制 patcher / patcher.exe 仍可用。解包/重打包/注入/来源声明/导出zip/导出APK/分支导图/翻译流水线。"
+          gh release create "$TAG" $PRERELEASE_FLAG --title "$REL_TITLE" \
+            --notes "$NOTES" \
             patcher_gui_win64.zip patcher_cli_win64.zip patcher_cli_linux64.zip version.json
           # 更新 latest 分支的 version.json（供 GUI 检查更新）
           python3 - <<'PY'
