@@ -11,8 +11,10 @@
 #else
 #include <time.h>
 #include <sys/stat.h>
+#include <unistd.h>   /* getpid（烘焙临时目录用） */
 #endif
 #include "inject/hot/inject_dll.h"
+#include "core/plugin_loader.h"  /* rpa_handler_t / rpa_handler_for_file（烘焙 DLL 用） */
 
 #include "util/log.h"
 #include "core/game_mgr.h"

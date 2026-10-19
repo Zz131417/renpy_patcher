@@ -134,11 +134,14 @@ endif()
 # Windows：链接 patcher_core.dll（GUI 真正用的内核）；Linux：链接 renpy_core 静态库。
 # 跑 ctest 即可执行；CI 的 linux-cli / windows-gui job 都会调用。
 enable_testing()
+# Windows：链接 patcher_core.dll（GUI 真正用的内核），core_api.c 已在 DLL 内；
+# Linux ：patcher_core 是 DLL 不存在，改为把 core_api.c 直接编进测试，再链 renpy_core 静态库。
 add_executable(test_core_api tests/test_core_api.c)
 target_include_directories(test_core_api PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if(WIN32)
     target_link_libraries(test_core_api PRIVATE patcher_core)
 else()
+    target_sources(test_core_api PRIVATE core_api/core_api.c)
     target_link_libraries(test_core_api PRIVATE renpy_core)
 endif()
 add_test(NAME core_api COMMAND test_core_api)
