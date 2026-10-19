@@ -52,6 +52,9 @@ configure_file(
 # ===================== zlib（源码内置，跨平台独立构建） =====================
 # third_party/zlib 为仓库内源码树，直接用其 CMake 构建静态库 zlibstatic，
 # 避免对系统 zlib / vcpkg 的依赖，保证 CI 离线可构建。
+# zlib 自带 example 测试会污染我们的 ctest，关闭它
+option(ZLIB_BUILD_EXAMPLES "Build zlib example programs" OFF)
+set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/zlib)
 # ============================================================================
 
