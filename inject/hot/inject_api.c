@@ -114,7 +114,6 @@ const inject_module_t g_inject_hot = {
     .desc = "热注入：进程注入 agent.dll + 定位CPython + 运行时加载mod（Windows）",
     .run = run,
 };
-};
 
 /* ===================== 通用 DLL 注入（任意 DLL，不依赖 agent/Python） ===================== */
 
