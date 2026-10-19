@@ -127,6 +127,13 @@ namespace RenPyPatcherGui
             w.Show();
         }
 
+        private void BtnInject_Click(object s, RoutedEventArgs e)
+        {
+            var w = new InjectWindow { Owner = this };
+            w.Show();
+            LogHub.Add(1, "已打开 DLL 注入窗口");
+        }
+
         private void BtnLog_Click(object s, RoutedEventArgs e)
         {
             if (_logWin == null || !_logWin.IsLoaded)

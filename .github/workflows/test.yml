@@ -47,6 +47,6 @@ jobs:
       - name: Configure (x64)
         run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DRP_BUILD_NUM=${{ github.run_number }}
       - name: Build core DLL + test
-        run: cmake --build build --config Release --target patcher_core test_core_api
-      - name: Test (patcher_core.dll 端到端)
+        run: cmake --build build --config Release --target patcher_core inject_probe_dll test_inject_probe test_core_api
+      - name: Test (patcher_core.dll 端到端 + DLL 热注入)
         run: cd build && ctest --output-on-failure -C Release

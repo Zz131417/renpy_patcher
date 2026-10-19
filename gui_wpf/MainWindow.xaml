@@ -35,6 +35,14 @@
                               Fill="#0F172A" Stretch="Uniform"/>
                     </Viewbox>
                 </Button>
+
+                <!-- 右侧：DLL 注入入口 -->
+                <Button x:Name="btnInject" HorizontalAlignment="Right" Margin="0,0,52,0"
+                        Height="40" Background="Transparent" BorderThickness="0"
+                        ToolTip="DLL 注入" Click="BtnInject_Click">
+                    <TextBlock Text="注入" FontWeight="Bold" Foreground="#0F172A" FontSize="13"
+                               VerticalAlignment="Center"/>
+                </Button>
             </Grid>
         </Border>
 

@@ -148,6 +148,18 @@ else()
     target_link_libraries(test_core_api PRIVATE renpy_core)
 endif()
 add_test(NAME core_api COMMAND test_core_api)
+
+# ---------------- Windows 集成测试：DLL 热注入（真注入验证） ----------------
+# 编译一个探针 DLL（被注入后会写标记文件），再由测试程序注入 notepad 并验证标记，
+# 端到端确认 rp_inject_dll 真的把 DLL 加载进目标进程（不是仅接口可达）。
+if(WIN32)
+    add_library(inject_probe_dll SHARED tests/inject_probe_dll.c)
+    add_executable(test_inject_probe tests/test_inject_probe.c)
+    target_include_directories(test_inject_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(test_inject_probe PRIVATE patcher_core)
+    # 把探针 DLL 路径作为参数传给测试，确保能定位到刚编出的 DLL
+    add_test(NAME inject_probe COMMAND test_inject_probe $<TARGET_FILE:inject_probe_dll>)
+endif()
 # ==========================================================================
 
 # 热注入 agent（仅 Windows）：被注入游戏进程的 DLL 载荷。
