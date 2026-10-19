@@ -142,8 +142,9 @@ static int inject_dll_into_handle(HANDLE hProc, const char *dll_path) {
     GetExitCodeThread(hThread, &exit);
     CloseHandle(hThread);
     VirtualFreeEx(hProc, remote, 0, MEM_RELEASE);
-    if (exit == 0) return RP_OK;
-    fprintf(stderr, "inject-dll: LoadLibrary 返回 %lu（DLL 缺失 / 位数不匹配 / 依赖不全？）\n", exit);
+    /* LoadLibrary 成功返回非零模块句柄；返回 0 (NULL) 才是失败 */
+    if (exit != 0) return RP_OK;
+    fprintf(stderr, "inject-dll: LoadLibrary 返回 0（DLL 缺失 / 位数不匹配 / 依赖不全？）\n");
     return RP_ERR_PLUGIN;
 }
 
