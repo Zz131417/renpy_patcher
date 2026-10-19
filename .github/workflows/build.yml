@@ -86,7 +86,7 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/download-artifact@v4
         with: { path: ., merge-multiple: true }
-      - name: Draft Release & Update latest/version.json
+      - name: Release & Update latest/version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -94,30 +94,30 @@ jobs:
           export VER=$(cat VERSION | tr -d '[:space:]')
           export BUILD="${{ github.run_number }}"
           export DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          # 正式发布判定：仓库根存在 .release_stable 则为正式版（v主版本，非预发布）
+          # 计算 TAG：正式版（仓库根有 .release_stable）= v主版本；否则取 git tags 中当前主版本最大的 beta 字母 +1
+          python3 - <<'PY' > /tmp/tag.txt
+          import os, json, re, urllib.request
+          TOKEN = os.environ["GITHUB_TOKEN"]; REPO = os.environ["GITHUB_REPOSITORY"]; VER = os.environ["VER"]
+          H = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json"}
+          if os.path.exists(".release_stable"):
+              print(f"v{VER}")
+          else:
+              tags = json.load(urllib.request.urlopen(
+                  urllib.request.Request(f"https://api.github.com/repos/{REPO}/tags?per_page=200", headers=H), timeout=30))
+              letters = [m.group(1) for t in tags
+                         if (m := re.match(rf"^v{re.escape(VER)}-beta([A-Za-z]+)$", t["name"]))]
+              nxt = "A" if not letters else chr(ord(sorted(letters)[-1]) + 1)
+              print(f"v{VER}-beta{nxt}")
+          PY
+          export TAG=$(cat /tmp/tag.txt)
           if [ -f .release_stable ]; then
-            export TAG="v${VER}"
+            export IS_PRERELEASE=false
             export PRERELEASE_FLAG=""
             export REL_TITLE="${TAG} (正式版)"
-            export IS_PRERELEASE=false
           else
-            # 下一个 beta 字母：查 git tags 中当前主版本最大的 beta 字母 +1；无则 A。
-            # （发正式版若 bump 主版本号，新版本下没有 betaX，自然从 A 重算。）
-            python3 - <<'PY' > /tmp/next_tag.txt
-            import os, json, re, urllib.request
-            TOKEN = os.environ["GITHUB_TOKEN"]; REPO = os.environ["GITHUB_REPOSITORY"]; VER = os.environ["VER"]
-            H = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json"}
-            tags = json.load(urllib.request.urlopen(
-                urllib.request.Request(f"https://api.github.com/repos/{REPO}/tags?per_page=200", headers=H), timeout=30))
-            letters = [m.group(1) for t in tags
-                       if (m := re.match(rf"^v{re.escape(VER)}-beta([A-Za-z]+)$", t["name"]))]
-            nxt = "A" if not letters else chr(ord(sorted(letters)[-1]) + 1)
-            print(f"v{VER}-beta{nxt}")
-            PY
-            export TAG=$(cat /tmp/next_tag.txt)
+            export IS_PRERELEASE=true
             export PRERELEASE_FLAG="--prerelease"
             export REL_TITLE="${TAG} (预发布)"
-            export IS_PRERELEASE=true
           fi
           export URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           echo "发布标签: $TAG  (prerelease=$IS_PRERELEASE)"
