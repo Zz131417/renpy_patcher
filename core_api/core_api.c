@@ -249,15 +249,19 @@ static void bake_remove_tree(const char *dir) {
 
 RP_CORE_API int rp_inject_dll_bake(const char *game_rpa, const char *dll_path, const char *out_rpa) {
     prog(0, "烘焙 DLL 进包");
-    const rpa_handler_t *h = rpa_handler_for_file(game_rpa);
-    if (!h || !h->unpack || !h->repack) {
-        rp_set_error("无法识别资源包: %s", game_rpa ? game_rpa : "");
-        prog(100, "失败"); return RP_ERR_FORMAT;
+    const char *in = game_resolve(game_rpa);
+    if (!in || !*in) {
+        rp_set_error("无法解析游戏来源: %s", game_rpa ? game_rpa : "");
+        prog(100, "失败"); return RP_ERR_NOTSUP;
     }
     char tmp[1024];
     bake_tmp_dir(tmp, sizeof(tmp), "bake");
-    int rc = h->unpack(game_rpa, tmp);
-    if (rc != RP_OK) { log_error("烘焙解包失败: %s", rp_last_error()); prog(100, "解包失败"); bake_remove_tree(tmp); return rc; }
+    int rc = rpa_v3_unpack(in, tmp);
+    if (rc != RP_OK) {
+        rp_set_error("烘焙解包失败 (rc=%d)", rc);
+        log_error("烘焙解包失败: %s", rp_last_error());
+        prog(100, "解包失败"); bake_remove_tree(tmp); return rc;
+    }
     const char *name = basename_of(dll_path);
     char dst[2048];
     snprintf(dst, sizeof(dst), "%s/%s", tmp, name);
@@ -266,8 +270,8 @@ RP_CORE_API int rp_inject_dll_bake(const char *game_rpa, const char *dll_path, c
         rp_set_error("复制 DLL 失败: %s", dll_path ? dll_path : "");
         prog(100, "失败"); bake_remove_tree(tmp); return rc;
     }
-    credit_write_file(tmp, game_rpa);
-    rc = h->repack(tmp, out_rpa);
+    credit_write_file(tmp, in);
+    rc = rpa_v3_repack(tmp, out_rpa);
     prog(100, rc == RP_OK ? "烘焙完成" : "烘焙失败");
     bake_remove_tree(tmp);
     return rc;
