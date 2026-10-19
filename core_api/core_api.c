@@ -4,6 +4,15 @@
  * branch / translate_cli。翻译命令直接复用 DLL 内已编入的 cmd_translate。
  */
 #include "core_api/core_api.h"
+#include <stdio.h>
+#include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#include <sys/stat.h>
+#endif
+#include "inject/hot/inject_dll.h"
 
 #include "util/log.h"
 #include "core/game_mgr.h"
@@ -161,4 +170,77 @@ RP_CORE_API int rp_translate_ai(const char *src_json, const char *out_json,
 RP_CORE_API int rp_translate_build(const char *json, const char *out_dir, const char *lang) {
     char *argv[] = { "build", (char *)json, "--lang", (char *)lang, "-o", (char *)out_dir };
     return run_translate(6, argv);
+}
+
+/* ---------------- 进程级 DLL 注入 ---------------- */
+RP_CORE_API int rp_inject_dll(int pid, const char *dll_path) {
+    prog(0, "进程注入 DLL");
+    int rc = inject_dll_into_pid(pid, dll_path ? dll_path : "");
+    prog(100, rc == RP_OK ? "注入完成" : "注入失败");
+    return rc;
+}
+
+RP_CORE_API int rp_inject_dll_launch(const char *exe_path, const char *dll_path, int delay_ms) {
+    prog(0, "启动并注入 DLL");
+    int rc = inject_dll_into_exe(exe_path ? exe_path : "", dll_path ? dll_path : "", delay_ms);
+    prog(100, rc == RP_OK ? "注入完成" : "注入失败");
+    return rc;
+}
+
+/* ---------------- 直接注入（烘焙）DLL 进包 ---------------- */
+static const char *basename_of(const char *p) {
+    const char *s = p;
+    for (const char *q = p; *q; q++) if (*q == '/' || *q == '\\') s = q + 1;
+    return s;
+}
+static int copy_file_raw(const char *src, const char *dst) {
+    FILE *f = fopen(src, "rb"); if (!f) return RP_ERR_IO;
+    FILE *o = fopen(dst, "wb"); if (!o) { fclose(f); return RP_ERR_IO; }
+    uint8_t buf[65536]; size_t r;
+    while ((r = fread(buf, 1, sizeof(buf), f)) > 0) fwrite(buf, 1, r, o);
+    fclose(f); fclose(o); return RP_OK;
+}
+static void bake_tmp_dir(char *buf, size_t n, const char *suffix) {
+#ifdef _WIN32
+    char tp[MAX_PATH];
+    if (GetTempPathA(MAX_PATH, tp))
+        snprintf(buf, n, "%srenpy_bake_%s_%u", tp, suffix, (unsigned)GetCurrentProcessId());
+    else
+        snprintf(buf, n, "renpy_bake_%s_%u", suffix, (unsigned)GetCurrentProcessId());
+#else
+    snprintf(buf, n, "/tmp/renpy_bake_%s_%u_%ld", suffix, (unsigned)getpid(), (long)time(NULL));
+#endif
+}
+static void bake_remove_tree(const char *dir) {
+#ifdef _WIN32
+    char cmd[1024]; snprintf(cmd, sizeof(cmd), "cmd /c rmdir /s /q \"%s\"", dir); (void)system(cmd);
+#else
+    char cmd[1024]; snprintf(cmd, sizeof(cmd), "rm -rf \"%s\"", dir); (void)system(cmd);
+#endif
+}
+
+RP_CORE_API int rp_inject_dll_bake(const char *game_rpa, const char *dll_path, const char *out_rpa) {
+    prog(0, "烘焙 DLL 进包");
+    const rpa_handler_t *h = rpa_handler_for_file(game_rpa);
+    if (!h || !h->unpack || !h->repack) {
+        rp_set_error("无法识别资源包: %s", game_rpa ? game_rpa : "");
+        prog(100, "失败"); return RP_ERR_FORMAT;
+    }
+    char tmp[1024];
+    bake_tmp_dir(tmp, sizeof(tmp), "bake");
+    int rc = h->unpack(game_rpa, tmp);
+    if (rc != RP_OK) { prog(100, "解包失败"); bake_remove_tree(tmp); return rc; }
+    const char *name = basename_of(dll_path);
+    char dst[2048];
+    snprintf(dst, sizeof(dst), "%s/%s", tmp, name);
+    rc = copy_file_raw(dll_path, dst);
+    if (rc != RP_OK) {
+        rp_set_error("复制 DLL 失败: %s", dll_path ? dll_path : "");
+        prog(100, "失败"); bake_remove_tree(tmp); return rc;
+    }
+    credit_write_file(tmp, game_rpa);
+    rc = h->repack(tmp, out_rpa);
+    prog(100, rc == RP_OK ? "烘焙完成" : "烘焙失败");
+    bake_remove_tree(tmp);
+    return rc;
 }

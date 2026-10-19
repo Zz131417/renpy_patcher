@@ -57,6 +57,16 @@ RP_CORE_API int rp_unpack(const char *game_token, const char *out_dir);
 RP_CORE_API int rp_build(const char *dir, const char *out_rpa);
 /* 把 mod 目录合并进【已解包目录】dir（同名覆盖、新增追加） */
 RP_CORE_API int rp_mod(const char *dir, const char *mod_dir);
+
+/* ---------- 进程级 DLL 注入（Windows） ---------- */
+/* 把 dll_path 注入 pid 进程（经典 LoadLibrary 远程线程注入）。非 Windows 返回 RP_ERR_NOTSUP。 */
+RP_CORE_API int rp_inject_dll(int pid, const char *dll_path);
+/* 启动 exe_path 并把 dll_path 注入新进程；delay_ms<=0 挂起注入后恢复，>0 则等待后注入。 */
+RP_CORE_API int rp_inject_dll_launch(const char *exe_path, const char *dll_path, int delay_ms);
+
+/* ---------- 直接注入（烘焙）：把 DLL 放进游戏包并重打包 ---------- */
+/* 解包 game_rpa → 把 dll_path 放入游戏目录 → 写来源声明 → 重打包为 out_rpa。跨平台。 */
+RP_CORE_API int rp_inject_dll_bake(const char *game_rpa, const char *dll_path, const char *out_rpa);
 /* 为 .rpa 追加来源声明，写出新 rpa */
 RP_CORE_API int rp_credit_add(const char *game_token, const char *out_rpa, const char *game_name);
 /* 仅生成来源声明文本（返回指针，UTF-8；下次调用前有效） */

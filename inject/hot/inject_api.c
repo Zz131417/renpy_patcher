@@ -5,6 +5,7 @@
  * 非 Windows：返回 RP_ERR_NOTSUP（沙箱/平台不支持）。
  */
 #include "agent.h"
+#include "inject/hot/inject_dll.h"
 #include "core/plugin.h"
 #include <stdio.h>
 #include <string.h>
@@ -113,3 +114,90 @@ const inject_module_t g_inject_hot = {
     .desc = "热注入：进程注入 agent.dll + 定位CPython + 运行时加载mod（Windows）",
     .run = run,
 };
+};
+
+/* ===================== 通用 DLL 注入（任意 DLL，不依赖 agent/Python） ===================== */
+
+#ifdef _WIN32
+
+/* 把 dll_path 注入到已打开的进程 hProc（调用方负责开关句柄） */
+static int inject_dll_into_handle(HANDLE hProc, const char *dll_path) {
+    size_t len = strlen(dll_path) + 1;
+    LPVOID remote = VirtualAllocEx(hProc, NULL, len, MEM_COMMIT, PAGE_READWRITE);
+    if (!remote) return RP_ERR_NOMEM;
+    SIZE_T written = 0;
+    if (!WriteProcessMemory(hProc, remote, dll_path, len, &written)) {
+        VirtualFreeEx(hProc, remote, 0, MEM_RELEASE);
+        return RP_ERR_IO;
+    }
+    HMODULE hKernel = GetModuleHandleA("kernel32.dll");
+    LPTHREAD_START_ROUTINE load =
+        (LPTHREAD_START_ROUTINE)GetProcAddress(hKernel, "LoadLibraryA");
+    HANDLE hThread = CreateRemoteThread(hProc, NULL, 0, load, remote, 0, NULL);
+    if (!hThread) {
+        VirtualFreeEx(hProc, remote, 0, MEM_RELEASE);
+        return RP_ERR_IO;
+    }
+    WaitForSingleObject(hThread, INFINITE);
+    DWORD exit = 0;
+    GetExitCodeThread(hThread, &exit);
+    CloseHandle(hThread);
+    VirtualFreeEx(hProc, remote, 0, MEM_RELEASE);
+    if (exit == 0) return RP_OK;
+    fprintf(stderr, "inject-dll: LoadLibrary 返回 %lu（DLL 缺失 / 位数不匹配 / 依赖不全？）\n", exit);
+    return RP_ERR_PLUGIN;
+}
+
+int inject_dll_into_pid(int pid, const char *dll_path) {
+    HANDLE hProc = OpenProcess(
+        PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
+        PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
+        FALSE, (DWORD)pid);
+    if (!hProc) {
+        fprintf(stderr, "inject-dll: 无法打开进程 pid=%d（权限不足？）\n", pid);
+        return RP_ERR_IO;
+    }
+    int rc = inject_dll_into_handle(hProc, dll_path);
+    CloseHandle(hProc);
+    if (rc == RP_OK) printf("inject-dll: 已注入 %s -> pid=%d\n", dll_path, pid);
+    return rc;
+}
+
+int inject_dll_into_exe(const char *exe_path, const char *dll_path, int delay_ms) {
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
+    memset(&pi, 0, sizeof(pi));
+    if (!CreateProcessA(exe_path, NULL, NULL, NULL, FALSE,
+                        delay_ms > 0 ? 0 : CREATE_SUSPENDED,
+                        NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "inject-dll: 无法启动进程: %s\n", exe_path);
+        return RP_ERR_IO;
+    }
+    int rc;
+    if (delay_ms > 0) {
+        Sleep((DWORD)delay_ms);
+        rc = inject_dll_into_handle(pi.hProcess, dll_path);
+    } else {
+        rc = inject_dll_into_handle(pi.hProcess, dll_path);
+        ResumeThread(pi.hThread);
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    if (rc == RP_OK) printf("inject-dll: 已注入 %s -> %s\n", dll_path, exe_path);
+    return rc;
+}
+
+#else /* 非 Windows */
+int inject_dll_into_pid(int pid, const char *dll_path) {
+    (void)pid; (void)dll_path;
+    fprintf(stderr, "inject-dll: 仅支持 Windows 平台\n");
+    return RP_ERR_NOTSUP;
+}
+int inject_dll_into_exe(const char *exe_path, const char *dll_path, int delay_ms) {
+    (void)exe_path; (void)dll_path; (void)delay_ms;
+    fprintf(stderr, "inject-dll: 仅支持 Windows 平台\n");
+    return RP_ERR_NOTSUP;
+}
+#endif
+

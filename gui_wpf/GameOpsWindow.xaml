@@ -154,6 +154,62 @@
                         <Button x:Name="btnTrBuild" Content="回写 Mod" Width="100" Margin="0,4,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnTrBuild_Click"/>
                     </StackPanel>
                 </GroupBox>
+
+                <GroupBox Header="进程注入（DLL）">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Label Content="目标 PID"/><TextBox x:Name="txtInjPid" Grid.Column="1" Margin="4"/>
+                            <Button x:Name="btnBrowseInjExe" Grid.Column="2" Content="启动程序" Width="80" Click="BtnBrowseInjExe_Click"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Label Content="启动 exe"/><TextBox x:Name="txtInjExe" Grid.Column="1" Margin="4"/>
+                            <Label Grid.Column="2" Content="延迟ms"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="80"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Label Content="注入延迟"/><TextBox x:Name="txtInjDelay" Grid.Column="1" Margin="4" Text="0"/>
+                            <Label Grid.Column="2" Content="DLL文件"/>
+                            <Grid Grid.Column="3">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBox x:Name="txtInjDll" Margin="4"/>
+                                <Button x:Name="btnBrowseInjDll" Grid.Column="1" Content="浏览" Width="60" Click="BtnBrowseInjDll_Click"/>
+                            </Grid>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="btnInjPid" Content="注入到进程(PID)" Width="130" Style="{StaticResource PrimaryButton}" Click="BtnInjPid_Click"/>
+                            <Button x:Name="btnInjLaunch" Content="启动并注入" Width="110" Margin="8,0,0,0" Click="BtnInjLaunch_Click"/>
+                        </StackPanel>
+                        <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
+                            仅 Windows：把指定 DLL 用远程线程（LoadLibrary）注入到运行中的进程；或启动程序后立即注入。需与目标进程位数一致。
+                        </TextBlock>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="直接注入 DLL（烘焙进包）">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Label Content="游戏 rpa"/><TextBox x:Name="txtBakeRpa" Grid.Column="1" Margin="4"/>
+                            <Button x:Name="btnBrowseBakeRpa" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseBakeRpa_Click"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Label Content="DLL 文件"/><TextBox x:Name="txtBakeDll" Grid.Column="1" Margin="4"/>
+                            <Button x:Name="btnBrowseBakeDll" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseBakeDll_Click"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Label Content="输出 rpa"/><TextBox x:Name="txtBakeOut" Grid.Column="1" Margin="4"/>
+                            <Button x:Name="btnBrowseBakeOut" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseBakeOut_Click"/>
+                        </Grid>
+                        <Button x:Name="btnBake" Content="烘焙 DLL 进包" Width="130" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnBake_Click"/>
+                        <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
+                            解包游戏包 → 把 DLL 放入游戏目录 → 写来源声明 → 重打包。跨平台（烘焙后的 DLL 需游戏自行加载）。
+                        </TextBlock>
+                    </StackPanel>
+                </GroupBox>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

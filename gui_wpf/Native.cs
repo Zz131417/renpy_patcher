@@ -71,6 +71,21 @@ namespace RenPyPatcherGui
         public static extern int rp_mod([MarshalAs(UnmanagedType.LPUTF8Str)] string dir,
                                        [MarshalAs(UnmanagedType.LPUTF8Str)] string mod_dir);
 
+        // 进程级 DLL 注入（Windows）
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int rp_inject_dll(int pid, [MarshalAs(UnmanagedType.LPUTF8Str)] string dll_path);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int rp_inject_dll_launch([MarshalAs(UnmanagedType.LPUTF8Str)] string exe_path,
+                                                     [MarshalAs(UnmanagedType.LPUTF8Str)] string dll_path,
+                                                     int delay_ms);
+
+        // 直接注入（烘焙）：把 DLL 放游戏包并重打包
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int rp_inject_dll_bake([MarshalAs(UnmanagedType.LPUTF8Str)] string game_rpa,
+                                                    [MarshalAs(UnmanagedType.LPUTF8Str)] string dll_path,
+                                                    [MarshalAs(UnmanagedType.LPUTF8Str)] string out_rpa);
+
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
         public static extern int rp_credit_add([MarshalAs(UnmanagedType.LPUTF8Str)] string game_token,
                                               [MarshalAs(UnmanagedType.LPUTF8Str)] string out_rpa,

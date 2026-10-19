@@ -83,5 +83,45 @@ namespace RenPyPatcherGui
 
         private void BtnTrBuild_Click(object s, RoutedEventArgs e) =>
             Ops.Run("回写 Mod", () => Native.rp_translate_build(txtTrBuildJson.Text.Trim(), txtTrBuildOut.Text.Trim(), txtTrLang.Text.Trim()));
+   
+        // ---------------- 进程注入（DLL） ----------------
+        private void PickFile(TextBox tb, string filter)
+        {
+            var d = new OpenFileDialog { Filter = filter, CheckFileExists = true };
+            if (d.ShowDialog() == true) tb.Text = d.FileName;
+        }
+        private void BtnBrowseInjExe_Click(object s, RoutedEventArgs e) => PickFile(txtInjExe, "可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*");
+        private void BtnBrowseInjDll_Click(object s, RoutedEventArgs e) => PickFile(txtInjDll, "动态库 (*.dll)|*.dll|所有文件 (*.*)|*.*");
+
+        private void BtnInjPid_Click(object s, RoutedEventArgs e)
+        {
+            var dll = txtInjDll.Text.Trim();
+            if (dll.Length == 0) { LogHub.Add(2, "请选择要注入的 DLL"); return; }
+            if (!int.TryParse(txtInjPid.Text.Trim(), out int pid) || pid <= 0) { LogHub.Add(2, "PID 非法"); return; }
+            Ops.Run("进程注入 DLL", () => Native.rp_inject_dll(pid, dll));
+        }
+
+        private void BtnInjLaunch_Click(object s, RoutedEventArgs e)
+        {
+            var exe = txtInjExe.Text.Trim();
+            var dll = txtInjDll.Text.Trim();
+            if (exe.Length == 0 || dll.Length == 0) { LogHub.Add(2, "启动程序与 DLL 均必填"); return; }
+            int.TryParse(txtInjDelay.Text.Trim(), out int delay);
+            Ops.Run("启动并注入 DLL", () => Native.rp_inject_dll_launch(exe, dll, delay));
+        }
+
+        // ---------------- 直接注入 DLL（烘焙进包） ----------------
+        private void BtnBrowseBakeRpa_Click(object s, RoutedEventArgs e) => PickFile(txtBakeRpa, "资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
+        private void BtnBrowseBakeDll_Click(object s, RoutedEventArgs e) => PickFile(txtBakeDll, "动态库 (*.dll)|*.dll|所有文件 (*.*)|*.*");
+        private void BtnBrowseBakeOut_Click(object s, RoutedEventArgs e) => PickFile(txtBakeOut, "资源包 (*.rpa)|*.rpa|所有文件 (*.*)|*.*");
+
+        private void BtnBake_Click(object s, RoutedEventArgs e)
+        {
+            var rpa = txtBakeRpa.Text.Trim();
+            var dll = txtBakeDll.Text.Trim();
+            var outr = txtBakeOut.Text.Trim();
+            if (rpa.Length == 0 || dll.Length == 0 || outr.Length == 0) { LogHub.Add(2, "游戏 rpa / DLL / 输出 rpa 均必填"); return; }
+            Ops.Run("烘焙 DLL 进包", () => Native.rp_inject_dll_bake(rpa, dll, outr));
+        }
     }
 }
