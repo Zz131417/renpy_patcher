@@ -222,20 +222,12 @@ static void bake_mkdir(const char *dir) {
     mkdir(tmp, 0755);
 #endif
 }
+/* 临时目录放在当前工作目录下（与 rp_unpack 成功路径一致，避免系统 Temp 的跨盘/路径格式差异）。 */
 static void bake_tmp_dir(char *buf, size_t n, const char *suffix) {
 #ifdef _WIN32
-    char tp[MAX_PATH];
-    if (GetTempPathA(MAX_PATH, tp) && tp[0]) {
-        size_t L = strlen(tp);
-        if (tp[L-1] != '\\' && tp[L-1] != '/')
-            snprintf(buf, n, "%s\\renpy_bake_%s_%u", tp, suffix, (unsigned)GetCurrentProcessId());
-        else
-            snprintf(buf, n, "%srenpy_bake_%s_%u", tp, suffix, (unsigned)GetCurrentProcessId());
-    } else {
-        snprintf(buf, n, "renpy_bake_%s_%u", suffix, (unsigned)GetCurrentProcessId());
-    }
+    snprintf(buf, n, "rp_bake_%s_%u", suffix, (unsigned)GetCurrentProcessId());
 #else
-    snprintf(buf, n, "/tmp/renpy_bake_%s_%u_%ld", suffix, (unsigned)getpid(), (long)time(NULL));
+    snprintf(buf, n, "rp_bake_%s_%u_%ld", suffix, (unsigned)getpid(), (long)time(NULL));
 #endif
     bake_mkdir(buf);
 }
