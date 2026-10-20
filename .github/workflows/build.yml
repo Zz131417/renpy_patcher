@@ -102,12 +102,9 @@ jobs:
           if os.path.exists(".release_stable"):
               print(f"v{VER}")
           else:
-              tags = json.load(urllib.request.urlopen(
-                  urllib.request.Request(f"https://api.github.com/repos/{REPO}/tags?per_page=200", headers=H), timeout=30))
-              letters = [m.group(1) for t in tags
-                         if (m := re.match(rf"^v{re.escape(VER)}-beta([A-Za-z]+)$", t["name"]))]
-              nxt = "A" if not letters else chr(ord(sorted(letters)[-1]) + 1)
-              print(f"v{VER}-beta{nxt}")
+              # 测试版命名规则：V主版本.次版本.构建号（构建号 = GitHub run_number）
+              xy = ".".join(VER.split(".")[:2]) if len(VER.split(".")) >= 2 else VER
+              print(f"V{xy}.{os.environ['BUILD']}")
           PY
           export TAG=$(cat /tmp/tag.txt)
           if [ -f .release_stable ]; then
@@ -124,7 +121,10 @@ jobs:
           # 生成 version.json（与 latest 分支既有格式一致）
           python3 - <<'PY'
           import os,json
-          body={"tag":os.environ["TAG"],"version":os.environ["VER"],"build":int(os.environ["BUILD"]),
+          VER=os.environ["VER"]; BUILD=os.environ["BUILD"]
+          xy=".".join(VER.split(".")[:2]) if len(VER.split("."))>=2 else VER
+          ver_field = f"{xy}.{BUILD}" if os.environ["IS_PRERELEASE"]=="true" else VER
+          body={"tag":os.environ["TAG"],"version":ver_field,"build":int(BUILD),
                 "prerelease":(os.environ["IS_PRERELEASE"]=="true"),"date":os.environ["DATE"],"url":os.environ["URL"]}
           open("version.json","w").write(json.dumps(body,ensure_ascii=False,indent=2)+"\n")
           print("version.json:\n"+open("version.json").read())
