@@ -14,7 +14,7 @@
 | 序列化 | 自研 **pickle_min**：解析 CPython 协议 2/3/4 的 `pickle`，用于读取与重写 Ren'Py 索引 |
 | 资源格式 | **RPA-3.0**：头部 `RPA-3.0` + 8 字节索引偏移 + 4 字节 XOR prefix；索引（pickle）位于数据段之后 |
 | 构建系统 | **CMake ≥ 3.17**（核心静态库 `renpy_core` + CLI `patcher` 可执行 + Windows 核心 DLL `patcher_core.dll`）；WPF GUI 在 `gui_wpf/`（.NET 8，单独 `dotnet publish`） |
-| 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译；推送 `main` 自动发测试版，手动 `workflow_dispatch` 发正式版 |
+| 持续集成 | **GitHub Actions**：Ubuntu(gcc) / Windows(MSVC) 双矩阵编译；推送 `main` 自动发测试版（`V主版本.次版本.构建号`），手动 `test.yml`（`workflow_dispatch`）跑核心/注入测试，正式版 `vX.Y.Z` 需根目录 `.release_stable` 标记 |
 | 热注入（Windows） | DLL 注入（`CreateRemoteThread` + `LoadLibrary`）+ **CPython C-API** 桥（`py_bridge.c` 定位宿主解释器并执行 `mod_main.py`） |
 | 扩展机制 | 统一模块契约（`core/plugin.h`）+ 中央注册表（`core/plugin_loader`） |
 
@@ -33,7 +33,8 @@
 │   ├── DEVELOP.md            # 本文：开发 / 构建 / 调试 / CI
 │   └── FAQ.md                # 常见问题
 ├── .github/workflows/
-│   └── build.yml            # CI：Linux/Windows 编译；推送 main 自动发测试版 / 手动发正式版
+│   ├── build.yml            # CI：Linux/Windows 编译；推送 main 自动发测试版 / 根含 .release_stable 时发正式版
+│   └── test.yml             # 手动 Test 工作流（workflow_dispatch）：编核心库/内核后跑 ctest，不发布
 ├── third_party/
 │   └── zlib/                # 内置 zlib 源码（add_subdirectory 构建，无需 vcpkg / 系统 zlib / 联网）
 ├── core/                    # 统一模块契约与注册表
@@ -72,13 +73,17 @@
 │       ├── inject_api.c     #   热注入入口（非 Windows 为 stub）
 │       └── py_bridge.c/.h   #   定位宿主 CPython 并执行 mod_main.py
 ├── gui_wpf/                 # Windows GUI（C# + WPF / .NET 8，P/Invoke 调 patcher_core.dll）
-│   ├── MainWindow.xaml/cs   #   主窗口：底部三页导航 + 各功能页 + 日志/进度
+│   ├── MainWindow.xaml/cs   #   主窗口：底部三页导航 + 各功能页 + 日志/进度 + 顶部「注入」入口
+│   ├── InjectWindow.xaml/cs #   独立 DLL 注入窗口（选 DLL + 目标进程 PID / 启动 exe 并注入）
 │   ├── Native.cs           #   P/Invoke 桥接到 patcher_core.dll
 │   └── App.xaml/cs         #   应用入口与界面设置加载
 ├── cli/
 │   └── main.c               # 命令行入口（子命令分发）
-└── tests/                   # 演示游戏 + 汉化 mod + 验证脚本
+└── tests/                   # 演示游戏 + 汉化 mod + 验证脚本 + 自动化测试
     ├── README_test.md       #   测试说明（含许可证约束）
+    ├── test_core_api.c      #   核心 API 端到端测试（ctest，仅用 core_api.h 高层接口）
+    ├── test_inject_probe.c  #   DLL 热注入集成测试（ctest，自注入验证 DLL 被加载）
+    ├── inject_probe_dll.c   #   测试用探针 DLL（DllMain 写 Temp 标记文件）
     ├── gen_demo_assets.py   #   生成演示游戏素材
     ├── make_real_rpa.py     #   用真实 RPA 格式打包
     ├── verify_rpa.py        #   用 Ren'Py loader 逻辑校验产物
@@ -167,9 +172,9 @@ gdb --args /tmp/patcher_dbg unpack game.rpa -o out
 
 ### 常见编译 / 链接问题
 
-1. **Windows GUI 构建报错「未声明的标识符」**
-   控件在 `MainForm.cpp` 里用了，但 `MainForm.h` 的控件声明块漏了对应的 `Button^` / `TextBox^` 成员。
-   多为 XAML 中引用的控件未在代码隐藏文件声明，或 P/Invoke 委托签名与原生回调不一致（尤其容易漏掉 `void* user` 参数）。核对 `Native.cs` 与 `core_api/core_api.h` 的回调签名。
+1. **Windows GUI 构建报错「未声明的标识符」/ `error CS`**
+   多为 XAML 中引用的控件未在代码隐藏文件（`MainWindow.xaml.cs` / `InjectWindow.xaml.cs`）声明，或漏了对应的 `using`（如 `System.Windows.Controls`）。
+   又如 P/Invoke 委托签名与原生回调不一致（尤其容易漏掉 `void* user` 参数）。核对 `Native.cs` 与 `core_api/core_api.h` 的回调签名。
 2. **`core/version.h: No such file`**
    必须先跑一次 `cmake -B build -S .` 生成 `version.h`，单文件 gcc 才能编。
 3. **`undefined reference to deflateInit2`**
@@ -192,36 +197,57 @@ gdb --args /tmp/patcher_dbg unpack game.rpa -o out
 
 ## CI（GitHub Actions）
 
-配置见 `.github/workflows/build.yml`。
+配置见 `.github/workflows/build.yml`（编译 + 发版）与 `.github/workflows/test.yml`（手动测试）。
 
 - **矩阵**：Ubuntu(gcc) + Windows(MSVC) 双平台编译；Release job 负责打包与发版。
-- **自动测试版**：推送 `main` → 自动编译并发布**测试版**（prerelease，tag 形如 `v1.3.0-betaA`）。
-- **手动正式版**：在 Actions 页面 **Run workflow（`workflow_dispatch`）** 并填 tag（如 `v1.2.0`）→ 编译并发布**正式版**（非 prerelease）。
-- **发正式版后自动升版**：正式版发布成功后，CI 自动把 `VERSION` 的 minor +1（如 `1.2.0` → `1.3.0`）并推回 `main`，
-  后续测试版自然进入新主版本序列，不会回退覆盖旧 beta。
-- **产物**：Windows MSI 安装包、Windows / Linux 压缩包、`version.json`（供 GUI 检查更新）。
+- **自动测试版**：推送 `main`（根目录无 `.release_stable`）→ 自动编译并发布**测试版**（prerelease，
+  tag 形如 `V1.4.148` = `V主版本.次版本.构建号`，构建号 = GitHub 运行序号）；`version.json` 的 `version` 为 `1.4.148`、`prerelease=true`。
+- **手动正式版**：在根目录放置 `.release_stable` 标记并 bump `VERSION` 到新 `X.Y.Z` 后推送 → 编译并发布**正式版**（非 prerelease，tag `vX.Y.Z`）。
+- **手动测试工作流**：`test.yml` 用 `workflow_dispatch` 触发（可选 `linux` / `windows` / `all`），编译核心库 / 内核后用 ctest 跑测试，**不发布产物**。
+- **产物**：Windows GUI 自包含包、Windows / Linux CLI 压缩包、`version.json`（供 GUI 检查更新）。
 
 ### 查 CI 失败日志
 
-- 在仓库 Actions 页面点对应 run → 看 job 日志（Windows 编译失败重点看 `##[error]` / `error C`）。
+- 在仓库 Actions 页面点对应 run → 看 job 日志（Windows 编译失败重点看 `##[error]` / `error C`；测试失败看 ctest 的 `[FAIL]` 行）。
 - 也可用 API 拉取某个 job 的原始日志（见各轮调试时的 `actions/jobs/<id>/logs`）。
 
 ### 常见 CI 坑
 
-1. **Windows 编译挂**：基本都是 `MainForm.h` 控件声明遗漏（见上「常见编译问题 1」）。本地没法编 Windows GUI 时，
-   提交后在 Actions 的 Windows job 日志里搜 `error C` 快速定位。
+1. **Windows 编译挂**：基本都是 `MainWindow.xaml.cs` / `InjectWindow.xaml.cs` 控件引用与 `using` 遗漏。本地没法编 Windows GUI 时，
+   提交后在 Actions 的 Windows job 日志里搜 `error C` / `error CS` 快速定位。
 2. **Git 推送被拒（non-fast-forward）**：`main` 可能在你开发期间被「发版自动升 VERSION」的 commit 超前。
    解决：先 `git fetch origin main`，把你的功能 commit `cherry-pick` 到最新 `FETCH_HEAD` 上再推；
    不要直接 `git pull --rebase`（会带入 CI 自动 commit 造成重复）。
+3. **zlib 自带 example 测试污染 ctest**：`third_party/zlib` 默认会编 example 并注册进 ctest，导致 ctest 退出码非 0 而误报失败；
+   `build.yml` 已 `set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)` 关掉它。
 
 ---
 
 ## 测试
 
-见 [`tests/README_test.md`](../tests/README_test.md)：包含可直接用 Ren'Py SDK 实测的演示游戏、汉化 mod，
-以及用 Ren'Py loader 逻辑校验产物的脚本（`verify_rpa.py`）。
+### 自动化（ctest）
+- **核心 API 端到端**（`tests/test_core_api.c`）：只调用 `core_api.h` 导出的高层接口（即 GUI P/Invoke 实际调用的函数），
+  自包含造数据并断言 解包 / 重打包 / 合并 Mod / 来源声明 / 烘焙 DLL / 导出 均成功。Windows 上链接**真实的 `patcher_core.dll`**（GUI 用的内核）。
+- **DLL 热注入集成**（`tests/test_inject_probe.c` + `tests/inject_probe_dll.c`）：默认**自注入当前进程**，
+  轮询 Temp 下的标记文件确认探针 DLL 的 `DllMain` 真被加载执行（CI 无 notepad 也能稳过）；也可传 `notepad.exe` 参数做跨进程注入。
+  这是对 `rp_inject_dll` 的端到端真注入验证，不是仅检查接口可达。
 
-本仓库已配置 CI（`build.yml`）：推送 `main` 自动编译并发布测试版；正式发版走手动 `workflow_dispatch`。
+跑法：
+```bash
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --target test_core_api          # Linux 另编 renpy_core
+# Windows 还需：cmake --build build --config Release --target patcher_core inject_probe_dll test_inject_probe
+cd build && ctest --output-on-failure                                 # Linux
+# Windows: cd build && ctest --output-on-failure -C Release
+```
+
+### Ren'Py 实测素材
+见 [`tests/README_test.md`](../tests/README_test.md)：包含可直接用 Ren'Py SDK 实测的演示游戏、汉化 mod，
+以及用 Ren'Py loader 逻辑校验产物的脚本（`verify_rpa.py`，不依赖 patcher）。
+
+### CI 触发
+- 手动 `Test` 工作流（`.github/workflows/test.yml`，`workflow_dispatch`）编译核心库 / 内核后跑上述 ctest，不发布产物。
+- `build.yml` 的 `release` job 只负责编译 + 发版，不再自动跑测试。
 
 ---
 
@@ -231,8 +257,8 @@ gdb --args /tmp/patcher_dbg unpack game.rpa -o out
 
 - **版本号来源**：根目录 `VERSION` 文件（语义化版本）。CMake 读取后生成 `core/version.h`，无需手工改。
 - **构建号**：由 CI 自动注入（GitHub 运行序号），用于 MSI 四段版本号与 GUI 检查更新比较；本地未接 CI 时默认为 0。
-- **测试版命名**：`v<主版本>-beta<字母>`（字母从 A 递增）；主版本号来自 `VERSION`。
-- **发正式版后自动升版**：见上「CI」一节。
+- **测试版命名**：`V<主版本>.<次版本>.<构建号>`（构建号 = GitHub 运行序号，如 `V1.4.148`），`version.json.version` 同步为 `1.4.148`、`prerelease=true`；主版本号来自 `VERSION`。
+- **正式版**：根目录存在 `.release_stable` 标记时，release job 用 `VERSION` 原值发 `vX.Y.Z`（非 prerelease）；否则发测试版 `V主版本.次版本.构建号`。
 - **最新发布 / 产物**：见 [Releases](https://github.com/Zz131417/renpy_patcher/releases)。
 - **更新历史**：见 [CHANGELOG.md](../CHANGELOG.md)。
 

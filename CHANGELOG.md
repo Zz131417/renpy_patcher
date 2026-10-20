@@ -1,8 +1,10 @@
 # 更新日志
 
 > 版本号格式 `X.Y.Z`。**正式版**从 `v1.0.0` 起标记发布；此前 `v0.1.x` 系列为预发布（非正式）版本，仅供先行体验与反馈。
+>
+> **测试版 tag 形如 `V<主版本>.<次版本>.<构建号>`**（构建号 = GitHub 运行序号，例 `V1.4.148`），`version.json` 的 `version` 字段同步为 `1.4.148`、`prerelease=true`；**正式版** tag 为 `vX.Y.Z`。默认 push `main` 出测试版，根目录放 `.release_stable` 标记并 bump `VERSION` 后出正式版。
 
-## v1.4.0（开发中）
+## v1.4.4
 
 ### 重大变更：GUI 用 WPF 重写（取代旧 C++/CLI WinForms）
 - 核心 C 库编成 `patcher_core.dll`（Windows，导出见 `core_api/core_api.h`），GUI 通过 P/Invoke 调用；**CLI 仍独立可用**（二者共用同一核心代码，逻辑完全一致）。
@@ -30,6 +32,15 @@
   - 菜单选项以带文本的边（`|"选项"|`）呈现；`jump`/`call`/`return` 也作为分支边；支持前向 / 跨文件 label 引用。
 - **CLI**：`patcher branch <解包目录> -o out [--format mermaid|json|dot|tree]`。
 - **GUI**：游戏管理页新增「聊天分支导图」分组框（选目录 + 选格式 + 生成，自动弹窗展示；可另存为文件）。
+
+
+### 测试 / 注入窗口（v1.4.1 – v1.4.4）
+- **GUI DLL 注入窗口**：新增独立「DLL 注入」窗口（`gui_wpf/InjectWindow.xaml/cs`，主窗口顶部「注入」入口）。选 DLL → 选目标（运行中进程填 PID，或启动 exe 并注入、可设延迟），走 `patcher_core.dll` 的 `rp_inject_dll` / `rp_inject_dll_launch`。
+- **核心 API 端到端测试**：新增 `tests/test_core_api.c`，仅调用 `core_api.h` 导出的高层接口（即 GUI P/Invoke 实际调用的函数），自包含造数据并断言解包 / 重打包 / 合并 Mod / 来源声明 / 烘焙 DLL / 导出均成功。接进 CMake `enable_testing`，CI 的 `linux-cli` / `windows-gui` 原先用 ctest 跑。
+- **DLL 热注入集成测试**：新增 `tests/test_inject_probe.c` + 探针 DLL `tests/inject_probe_dll.c`；默认自注入当前进程、轮询 Temp 标记文件确认 DLL 的 `DllMain` 真被加载执行（CI 无 notepad 也能稳过），亦可传 exe 参数做跨进程注入。挂在手动的 `test.yml` 工作流。
+- **手动 Test 工作流**：拆分出 `.github/workflows/test.yml`（`workflow_dispatch`，可选 linux / windows），编译核心库 / 内核后用 ctest 跑测试，不发布产物；`build.yml` 不再自动跑测试。
+- **修复热注入返回值判断**：`inject_dll_into_handle` 中 `LoadLibrary` 返回值判断写反（成功返回非零模块句柄却被误判为失败），导致 DLL 注入成功却报 `RP_ERR_PLUGIN`；已修正为「非零 = 成功」。
+
 
 ## v1.2.0
 

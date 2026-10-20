@@ -13,7 +13,7 @@
 ## 特性
 - **RPA-3.0 双向闭环**：解包与重打包字节级兼容 Ren'Py 引擎（索引写在数据之后，头部记录索引偏移）。
 - **直接注入**：把汉化/Mod 资源合并进游戏包后重打包，产出可被真实游戏直接读取的补丁。
-- **热注入（Windows）**：运行时向游戏进程注入 DLL，定位 CPython、激活游戏内 Python 加载 `mod_main.py`，零改文件。
+- **热注入（Windows）**：运行时向游戏进程注入 DLL，定位 CPython、激活游戏内 Python 加载 `mod_main.py`，零改文件；GUI 提供独立「DLL 注入」窗口（选 DLL + 目标进程 PID / 启动 exe 并注入）。
 - **对话翻译流水线**：提取游戏对话 → AI / 人工翻译 → 一键生成 Ren'Py 翻译 mod，免去手工改每个脚本。
 - **可扩展架构**：统一模块注册表（`core/plugin_loader`），新能力（压缩导出 / 翻译后端 / 外部插件）即插即用。
 - **Windows GUI**：C# / WPF（.NET 8），通过 `patcher_core.dll` 调用核心库，功能与 CLI 对齐；底部三页导航（游戏管理 / 主页 / 设置）、操作前校验输入、失败在日志区显示「错误码 + 中文含义 + 底层详情」、后台线程执行不卡界面。
@@ -211,6 +211,7 @@ patcher branch <解包目录> -o branch.txt --format tree
 - 翻译流水线：提取对话 / AI 翻译 / 生成翻译 mod
 - 聊天分支导图：解析 label / menu 选择分支，导出 tree / mermaid / dot / json（CLI + GUI）
 - 导出 APK：基于已有 Ren'Py 安卓包重打包注入 mod，生成未签名 APK（需自行 apksigner 签名）
+- DLL 注入窗口：选 DLL → 选目标（运行中进程填 PID，或启动 exe 并注入，可设延迟），走 `patcher_core.dll` 的热注入接口
 - 检查更新：设置页可一键检查，按构建号与 GitHub 最新构建比较；「接收测试版更新」开关可切换是否提示测试版
 
 GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源码形式内置在 `third_party/zlib`，**无需 vcpkg / 系统 zlib / 联网**。
@@ -246,9 +247,11 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 
 ## 测试
 
-见 [`tests/README_test.md`](tests/README_test.md)：包含可直接用 Ren'Py SDK 实测的演示游戏、汉化 mod，以及用 Ren'Py loader 逻辑校验产物的脚本。
+- **单元 / 集成测试（ctest）**：核心 API 端到端（`tests/test_core_api.c`，覆盖解包 / 重打包 / 合并 Mod / 来源声明 / 烘焙 DLL / 导出）+ DLL 热注入集成（`tests/test_inject_probe.c`，自注入当前进程验证 DLL 真正被加载执行）。
+- **手动 `Test` 工作流**：`.github/workflows/test.yml` 用 `workflow_dispatch` 手动触发（可选 linux / windows）；编译核心库 / 内核（`patcher_core.dll`）后用 ctest 跑上述测试，**不发布产物**。
+- **Ren'Py 实测素材**：见 [`tests/README_test.md`](tests/README_test.md)，含可直接用 Ren'Py SDK 运行的演示游戏与汉化 mod，及用 Ren'Py loader 逻辑校验产物的脚本。
 
-本仓库已配置 CI（`build.yml`）：推送 `main` 自动编译并发布测试版；正式发版走手动 `workflow_dispatch`。
+> 测试版 tag 形如 `V1.4.148`（主版本.次版本.构建号），正式版为 `vX.Y.Z`；发版与命名规则见 [doc/DEVELOP.md](doc/DEVELOP.md)。
 
 ## 已实现能力
 - RPA-3.0 解包 / 原样重打包闭环
@@ -263,6 +266,7 @@ GUI、核心库与 CLI 由同一个 `CMakeLists.txt` 统一构建；zlib 以源�
 - 游戏别名管理
 - Windows GUI（功能对齐 CLI，含检查更新与测试版通道）
 - 跨平台 CI 编译与自动 / 手动发布
+- CI 自动化测试（核心 API 端到端 + DLL 热注入集成，手动 Test 工作流）
 
 > 能力范围与最新进展以 [CHANGELOG.md](CHANGELOG.md) 为准。
 >

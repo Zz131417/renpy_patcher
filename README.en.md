@@ -39,7 +39,7 @@ Ren'Py ships game assets inside `.rpa` archives. To translate or mod a game you 
 ## Features
 - **RPA-3.0 round-trip**: unpacking and repacking are byte-for-byte compatible with the Ren'Py engine (the index is stored *after* the data, and the header records the index offset).
 - **Direct injection**: merge translation/mod resources into the game archive and repack, producing a patch that a real game can read directly.
-- **Hot injection (Windows)**: inject a DLL into the running game process at runtime, locate CPython, and activate the game's in-process Python to load `mod_main.py` — zero file modification.
+- **Hot injection (Windows)**: inject a DLL into the running game process at runtime, locate CPython, and activate the game's in-process Python to load `mod_main.py` — zero file modification. The GUI also ships a standalone **DLL Injection** window (pick a DLL + target process PID, or launch an exe and inject, with an optional delay).
 - **Extensible architecture**: a unified module registry (`core/plugin_loader`) lets new capabilities (compressed export / translation backends / external plugins) be plugged in with no core changes.
 - **Windows GUI**: C# / WPF (.NET 8) calling the core via `patcher_core.dll`, on par with the CLI; bottom 3-page nav (Game / Home / Settings), validates input, shows "error code + meaning + detail" on failure, runs ops on a background thread.
 - **Built-in update check**: the GUI can check for updates from Settings (compared by build number), with an optional pre-release channel toggle.
@@ -221,10 +221,12 @@ my_mod/
 See [`tests/mod_hanzi`](tests/mod_hanzi) for a working sample (Chinese script + logo swap).
 
 ## Testing
-See [`tests/README_test.md`](tests/README_test.md). The `tests/` directory ships:
-- `gen_demo_assets.py` — generates a small demo game (`options.rpy`, `script.rpy`, `images/logo.png`).
-- `make_real_rpa.py` — packs it with the **real RPA-3.0 format** (random XOR prefix).
-- `verify_rpa.py` — validates the patched output using Ren'Py loader logic (XOR decode + zlib inflate + pickle parse), and asserts byte-equality against the expected file set.
+- **Unit / integration tests (ctest)**: core API end-to-end (`tests/test_core_api.c`, covering unpack / repack / mod merge / credit / DLL bake / export) + a DLL hot-injection integration test (`tests/test_inject_probe.c`, self-injects into the current process and verifies the DLL was actually loaded).
+- **Manual `Test` workflow**: `.github/workflows/test.yml` is triggered manually via `workflow_dispatch` (choose linux / windows); it builds the core lib / kernel (`patcher_core.dll`) and runs the above via ctest, **without publishing artifacts**.
+- **Ren'Py SDK demo**: see [`tests/README_test.md`](tests/README_test.md). The `tests/` directory ships:
+  - `gen_demo_assets.py` — generates a small demo game (`options.rpy`, `script.rpy`, `images/logo.png`).
+  - `make_real_rpa.py` — packs it with the **real RPA-3.0 format** (random XOR prefix).
+  - `verify_rpa.py` — validates the patched output using Ren'Py loader logic (XOR decode + zlib inflate + pickle parse), and asserts byte-equality against the expected file set.
 
 You can run the demo end-to-end, then drop the produced `patched.rpa` into a real Ren'Py SDK game to confirm the Chinese text shows up.
 
@@ -265,6 +267,7 @@ Notes:
 Besides the CLI, there is a **GUI version** (Windows only, C# + WPF / .NET 8) with **feature parity** to the CLI: the core C library is built as `patcher_core.dll` and called via P/Invoke. CLI and GUI share the exact same core code.
 - Game management: add / remove / list aliases
 - Unpack / Inject (build, auto credit) / Credit / Export (with split)
+- DLL Injection window: pick a DLL, choose a target (a running process PID, or launch an exe and inject, with a delay), driven by `patcher_core.dll`
 
 The GUI, the core library and the CLI are all built from a single `CMakeLists.txt`. zlib is vendored as source under `third_party/zlib`, so **no vcpkg / system zlib / network** is required.
 
@@ -297,16 +300,19 @@ The GUI, the core library and the CLI are all built from a single `CMakeLists.tx
 - **Auto-generated**: CMake parses `VERSION`, captures the git short commit, and writes `core/version.h` (pulled in by `core/plugin.h`) — no need to edit version macros by hand.
 - **Check version**: `patcher --version` (or `-v`) prints the version, the build commit, and the license.
 - **Build number**: injected automatically by CI (GitHub run number); used for the MSI four-segment version (so the installer can compare upgrades/downgrades) and for the GUI update check. Local builds default to 0.
-- **Pre-release naming**: auto-releases use `v<major>-beta<letter>` (letters increment from `A`, e.g. `betaA`/`betaB`/…); publishing a stable release for that major resets the beta counter back to `A`.
+- **Pre-release naming**: auto-releases use `V<major>.<minor>.<build>` (build = GitHub run number), e.g. `V1.4.148`; `version.json` reports `version` as `<major>.<minor>.<build>` with `prerelease=true`. A **stable** release uses `vX.Y.Z` (semver) and is cut only when a `.release_stable` marker is present at the repo root.
 - **Release flow**:
-  - Pushing to `main` → CI builds and publishes a **pre-release** automatically.
-  - Manual **Run workflow (workflow_dispatch)** with a tag (e.g. `v1.1.0`) → CI builds and publishes a **stable release** (non-prerelease).
+  - Pushing to `main` (no `.release_stable`) → CI builds and publishes a **pre-release** (`V<major>.<minor>.<build>`) automatically.
+  - Adding a `.release_stable` marker at the root + bumping `VERSION`, then pushing → CI builds and publishes a **stable release** (`vX.Y.Z`, non-prerelease).
+  - The `Test` workflow (`.github/workflows/test.yml`) is a separate, manual `workflow_dispatch` that builds and runs ctest only (no publish).
 - `core/version.h` is a generated file and is `.gitignore`d — do not commit it by hand.
 
 ## CI / Release
 `.github/workflows/build.yml`:
 - Triggers on push to `main` (auto build + pre-release) and on manual `workflow_dispatch` (build + stable release).
 - Builds on **Ubuntu (gcc)** and **Windows (MSVC)**; packages CLI zips plus a Windows MSI installer and a `version.json` (consumed by the GUI update check).
+
+`.github/workflows/test.yml` (separate, manual `workflow_dispatch`, optional linux/windows): builds the core lib / kernel and runs `ctest` (core API + DLL hot-injection integration) without publishing.
 - Latest builds: [Releases](https://github.com/Zz131417/renpy_patcher/releases). Update history: [CHANGELOG.md](CHANGELOG.md).
 
 To cut a stable release: open **Actions → Build & Package → Run workflow**, set the tag (e.g. `v1.1.0`) and `prerelease=false`.
@@ -317,7 +323,7 @@ To cut a stable release: open **Actions → Build & Package → Run workflow**, 
 | M1 | RPA-3.0 unpack | ✅ Done |
 | M2 | As-is repack round-trip | ✅ Done |
 | M3 | Direct injection (merge mod → repack) | ✅ Done |
-| M4 | Hot injection (Windows process injection + CPython bridge) | ✅ Code done (needs Windows test) |
+| M4 | Hot injection (Windows process injection + CPython bridge) | ✅ Done (verified by DLL injection integration test) |
 | M5 | Export / split (standard zip, in-house util/zip) | ✅ Done |
 | GUI | Windows GUI (C# / WPF, on par with CLI, P/Invoke to patcher_core.dll, crash-proof + error display) | ✅ Done (v1.4.0) |
 | M7 | External plugin DLL auto-load (registry entry reserved) | 🔲 Not implemented |

@@ -81,9 +81,9 @@ RP_AI_API_KEY=sk-xxx patcher translate ai dialogs.json -o dialogs_t.json \
 ## 版本号 / 测试版 / 正式版怎么管理？
 
 - 版本号来自根目录 `VERSION` 文件，CMake 自动生成 `core/version.h`。
-- 推送 `main` → 自动发**测试版**（`vX.Y.Z-betaA`…）。
-- 手动 `workflow_dispatch` 发**正式版**后，CI 自动把 `VERSION` 的 minor +1 推回 `main`，
-  后续测试版进入新主版本序列，不会覆盖旧 beta。
+- 推送 `main`（根目录无 `.release_stable`）→ 自动发**测试版**，tag 形如 `V1.4.148`（`V主版本.次版本.构建号`，构建号 = GitHub 运行序号），`version.json` 的 `version` 为 `1.4.148`、`prerelease=true`。
+- 根目录放 `.release_stable` 标记并 bump `VERSION` 后推送 → 发**正式版**（`vX.Y.Z`，非 prerelease）。
+- 测试改由独立的手动 `Test` 工作流跑（`.github/workflows/test.yml`，`workflow_dispatch`），不随 push 自动发版。
 
 详细见 [`doc/DEVELOP.md`](DEVELOP.md) 的「版本与发布 / CI」。
 

@@ -30,6 +30,9 @@ tests/
 ├── gen_demo_assets.py       生成演示 PNG（不依赖 PIL）
 ├── make_real_rpa.py         生成真实格式 RPA（随机 prefix + Ren'Py 写法索引）
 ├── verify_rpa.py            用 Ren'Py loader 逻辑校验 .rpa 是否合规（不依赖 patcher）
+├── test_core_api.c          核心 API 端到端测试（ctest，仅用 core_api.h 高层接口）
+├── test_inject_probe.c      DLL 热注入集成测试（ctest，自注入验证 DLL 被加载）
+├── inject_probe_dll.c       测试用探针 DLL（DllMain 写 Temp 标记文件）
 └── README_test.md           本文件
 ```
 
@@ -89,3 +92,26 @@ python3 tests/verify_rpa.py my_patched.rpa tests/sample_game/game
 
 > 因沙箱无 Ren'Py 运行时，最终「画面显示中文」需在 Windows/macOS 的 Ren'Py SDK 上目视确认；
 > 文件级与格式级正确性已由上述自动化验证保证。
+
+---
+
+## 五、ctest 单元 / 集成测试（自动）
+
+除上面的 Ren'Py 实测素材外，仓库还内置两套可直接被 `ctest` 跑的自动化测试，覆盖核心库与 GUI 共用的同一份接口：
+
+- **`test_core_api.c`（核心 API 端到端）**：只调用 `core_api.h` 导出的高层接口（即 GUI 通过 P/Invoke 实际调用的函数）。它自己造一个临时游戏目录 → `rp_build` 成 rpa → `rp_unpack` / `rp_mod` / `rp_credit_add` / `rp_inject_dll_bake` / `rp_export`，逐项断言返回 `RP_OK` 且产物存在。Windows 上链接的是**真实的 `patcher_core.dll`**（GUI 用的内核），因此这套测试同时验证了内核本身。
+- **`test_inject_probe.c` + `inject_probe_dll.c`（DLL 热注入集成）**：默认**自注入当前进程**，注入后轮询 Temp 目录下的标记文件确认探针 DLL 的 `DllMain` 真被加载执行 —— 这是对 `rp_inject_dll` 的端到端真注入验证（不是仅检查接口可达）；也可传 `notepad.exe` 等参数做跨进程注入。
+
+### 本地跑
+
+```bash
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --target test_core_api          # Linux 另链 renpy_core
+# Windows 还需：cmake --build build --config Release --target patcher_core inject_probe_dll test_inject_probe
+cd build && ctest --output-on-failure                                 # Linux
+# Windows：cd build && ctest --output-on-failure -C Release
+```
+
+### CI
+
+手动 `Test` 工作流（`.github/workflows/test.yml`，`workflow_dispatch`，可选 linux / windows）编译核心库 / 内核后用 ctest 跑上述测试，**不发布产物**；`build.yml` 只负责编译 + 发版，不再自动跑测试。
