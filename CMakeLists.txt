@@ -77,6 +77,7 @@ set(CORE_SRC
     rpa/rpa_v3.c
     rpa/rpa_v3_repack.c
     mod/mod_loader.c
+    mod/mod_dropin.c
     translate/rpy_dialog.c
     translate/json_io.c
     translate/ai_translate.c

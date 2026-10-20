@@ -71,6 +71,12 @@ namespace RenPyPatcherGui
         public static extern int rp_mod([MarshalAs(UnmanagedType.LPUTF8Str)] string dir,
                                        [MarshalAs(UnmanagedType.LPUTF8Str)] string mod_dir);
 
+        // drop-in 模式：把 mod 装入已解包游戏 game/ 下，生成 game/mod/ 与 game/dll/ + bootstrap
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int rp_mod_dropin([MarshalAs(UnmanagedType.LPUTF8Str)] string game_dir,
+                                              [MarshalAs(UnmanagedType.LPUTF8Str)] string mod_src,
+                                              [MarshalAs(UnmanagedType.LPUTF8Str)] string dll_dir);
+
         // 进程级 DLL 注入（Windows）
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
         public static extern int rp_inject_dll(int pid, [MarshalAs(UnmanagedType.LPUTF8Str)] string dll_path);

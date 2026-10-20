@@ -120,6 +120,26 @@ int main(void) {
     rc = rp_inject_dll(999999, "nonexistent.dll");
     check(rc != RP_OK, "rp_inject_dll (无效目标返回非0，接口可达)");
 
+    /* 8) drop-in 模式：把 mod/ 与 dll/ 装入已解包游戏目录，并写 bootstrap */
+    char drop_mod[512], drop_dll[512];
+    snprintf(drop_mod, sizeof(drop_mod), "%s/dropin_mod", root);
+    snprintf(drop_dll, sizeof(drop_dll), "%s/dropin_dll", root);
+    mkdirp(drop_mod); mkdirp(drop_dll);
+    write_file("rp_core_test/dropin_mod/mod_main.py",
+        "print('renpy_patcher drop-in mod loaded')\n");
+    write_file("rp_core_test/dropin_mod/zz_patch.rpy",
+        "# -*- coding: utf-8 -*-\n# drop-in patch\n");
+    write_file("rp_core_test/dropin_dll/test_payload.dll",
+        "MZ\\x90\\x00(fake-dll-for-dropin-test)");
+    rc = rp_mod_dropin(unpacked, drop_mod, drop_dll);
+    check(rc == RP_OK, "rp_mod_dropin (安装 drop-in mod+dll)");
+    check(file_exists("rp_core_test/unpacked/mod/mod_main.py"),
+          "drop-in: game/mod/mod_main.py 已生成");
+    check(file_exists("rp_core_test/unpacked/dll/test_payload.dll"),
+          "drop-in: game/dll/test_payload.dll 已生成");
+    check(file_exists("rp_core_test/unpacked/zzz_renpy_patcher.rpy"),
+          "drop-in: bootstrap 已生成");
+
     if (g_fail == 0) {
         printf("\nALL CORE API TESTS PASSED ✅\n");
         return 0;

@@ -15,6 +15,7 @@
 #endif
 #include "inject/hot/inject_dll.h"
 #include "core/plugin_loader.h"  /* rpa_handler_t / rpa_handler_for_file（烘焙 DLL 用） */
+#include "mod/mod_dropin.h"
 
 #include "util/log.h"
 #include "core/game_mgr.h"
@@ -93,6 +94,13 @@ RP_CORE_API int rp_mod(const char *dir, const char *mod_dir) {
     prog(0, "注入 mod");
     int rc = merge_mod_into_dir(dir, mod_dir);
     prog(100, rc == RP_OK ? "mod 注入完成" : "mod 注入失败");
+    return rc;
+}
+
+RP_CORE_API int rp_mod_dropin(const char *game_dir, const char *mod_src, const char *dll_dir) {
+    prog(0, "安装 drop-in mod");
+    int rc = mod_dropin_install(game_dir, mod_src, dll_dir);
+    prog(100, rc == RP_OK ? "drop-in 安装完成" : "drop-in 安装失败");
     return rc;
 }
 

@@ -44,6 +44,29 @@
                     </StackPanel>
                 </GroupBox>
 
+                <GroupBox Header="Drop-in Mod（游戏自读 mod/ dll/）">
+                    <StackPanel>
+                        <TextBlock TextWrapping="Wrap" Foreground="#475569" Margin="0,0,0,6"
+                                   FontSize="11">安装后游戏原 exe 启动即自动读取 game/mod/ 资源与 game/dll/ 注入，改 mod 无需重打包。</TextBlock>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Label Content="已解包目录"/><TextBox x:Name="txtDropGame" Grid.Column="1" Margin="4"/>
+                        </Grid>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Label Content="Mod目录"/><TextBox x:Name="txtDropMod" Grid.Column="1" Margin="4"/>
+                            <Button x:Name="btnBrowseDropMod" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseDropMod_Click"/>
+                        </Grid>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Label Content="DLL目录"/><TextBox x:Name="txtDropDll" Grid.Column="1" Margin="4"/>
+                            <Button x:Name="btnBrowseDropDll" Grid.Column="2" Content="浏览" Width="60" Click="BtnBrowseDropDll_Click"/>
+                        </Grid>
+                        <Button x:Name="btnDropin" Content="安装 Drop-in" Width="110" Margin="0,8,0,0"
+                                HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnDropin_Click"/>
+                    </StackPanel>
+                </GroupBox>
+
                 <GroupBox Header="来源声明（追加到 .rpa）">
                     <StackPanel>
                         <Grid>

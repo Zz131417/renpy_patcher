@@ -24,6 +24,7 @@ namespace RenPyPatcherGui
             txtBranchDir.Text = gamePath;
             txtExportDir.Text = gamePath;
             txtModTarget.Text = gamePath;
+            txtDropGame.Text = gamePath;
         }
 
         private void PickFolder(TextBox tb)
@@ -34,6 +35,8 @@ namespace RenPyPatcherGui
 
         private void BtnBrowseUnpackOut_Click(object s, RoutedEventArgs e) => PickFolder(txtUnpackOut);
         private void BtnBrowseModDir_Click(object s, RoutedEventArgs e) => PickFolder(txtModDir);
+        private void BtnBrowseDropMod_Click(object s, RoutedEventArgs e) => PickFolder(txtDropMod);
+        private void BtnBrowseDropDll_Click(object s, RoutedEventArgs e) => PickFolder(txtDropDll);
         private void BtnBrowseExportDir_Click(object s, RoutedEventArgs e) => PickFolder(txtExportDir);
         private void BtnBrowseBranchDir_Click(object s, RoutedEventArgs e) => PickFolder(txtBranchDir);
         private void BtnBrowseTrDir_Click(object s, RoutedEventArgs e) => PickFolder(txtTrDir);
@@ -46,6 +49,8 @@ namespace RenPyPatcherGui
 
         private void BtnMod_Click(object s, RoutedEventArgs e) =>
             Ops.Run("注入 Mod", () => Native.rp_mod(txtModTarget.Text.Trim(), txtModDir.Text.Trim()));
+
+        private void BtnDropin_Click(object s, RoutedEventArgs e) => Ops.Run("安装 Drop-in", () => Native.rp_mod_dropin(txtDropGame.Text.Trim(), txtDropMod.Text.Trim(), txtDropDll.Text.Trim()));
 
         private void BtnCredit_Click(object s, RoutedEventArgs e) =>
             Ops.Run("来源声明", () => Native.rp_credit_add(txtCreditGame.Text.Trim(), txtCreditOut.Text.Trim(), txtCreditName.Text.Trim()));

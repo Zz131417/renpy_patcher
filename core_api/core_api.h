@@ -57,6 +57,10 @@ RP_CORE_API int rp_unpack(const char *game_token, const char *out_dir);
 RP_CORE_API int rp_build(const char *dir, const char *out_rpa);
 /* 把 mod 目录合并进【已解包目录】dir（同名覆盖、新增追加） */
 RP_CORE_API int rp_mod(const char *dir, const char *mod_dir);
+/* drop-in 模式：把 mod 装入已解包游戏 game/ 下，生成 game/mod/ 与 game/dll/ 并写入
+ * bootstrap（zzz_renpy_patcher.rpy）；游戏原 exe 启动时自动读取 mod/ 资源与 dll/。
+ * mod_src / dll_dir 可为 NULL（仅写 bootstrap）。 */
+RP_CORE_API int rp_mod_dropin(const char *game_dir, const char *mod_src, const char *dll_dir);
 
 /* ---------- 进程级 DLL 注入（Windows） ---------- */
 /* 把 dll_path 注入 pid 进程（经典 LoadLibrary 远程线程注入）。非 Windows 返回 RP_ERR_NOTSUP。 */
