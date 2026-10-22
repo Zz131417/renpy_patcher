@@ -64,6 +64,9 @@
                         </Grid>
                         <Button x:Name="btnDropin" Content="安装 Drop-in" Width="110" Margin="0,8,0,0"
                                 HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" Click="BtnDropin_Click"/>
+
+                        <Button x:Name="btnModManage" Content="打开 Mod 管理 →" Width="130" Margin="0,8,0,0"
+                                HorizontalAlignment="Left" Click="BtnModManage_Click"/>
                     </StackPanel>
                 </GroupBox>
 

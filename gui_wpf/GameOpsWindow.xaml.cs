@@ -13,9 +13,14 @@ namespace RenPyPatcherGui
     /// </summary>
     public partial class GameOpsWindow : Window
     {
+        private readonly string _gameName;
+        private readonly string _gamePath;
+
         public GameOpsWindow(string gameName, string gamePath)
         {
             InitializeComponent();
+            _gameName = gameName;
+            _gamePath = gamePath;
             txtTitle.Text = "正在管理：" + gameName;
             // 预填参数：token 类填名称，目录类填路径
             txtUnpackGame.Text = gameName;
@@ -51,6 +56,12 @@ namespace RenPyPatcherGui
             Ops.Run("注入 Mod", () => Native.rp_mod(txtModTarget.Text.Trim(), txtModDir.Text.Trim()));
 
         private void BtnDropin_Click(object s, RoutedEventArgs e) => Ops.Run("安装 Drop-in", () => Native.rp_mod_dropin(txtDropGame.Text.Trim(), txtDropMod.Text.Trim(), txtDropDll.Text.Trim()));
+
+        private void BtnModManage_Click(object s, RoutedEventArgs e)
+        {
+            var w = new ModManageWindow(_gameName, _gamePath) { Owner = this };
+            w.Show();
+        }
 
         private void BtnCredit_Click(object s, RoutedEventArgs e) =>
             Ops.Run("来源声明", () => Native.rp_credit_add(txtCreditGame.Text.Trim(), txtCreditOut.Text.Trim(), txtCreditName.Text.Trim()));
